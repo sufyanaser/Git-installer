@@ -1,409 +1,246 @@
-﻿using System;
-using System.Diagnostics;
+using System.ComponentModel;
 using System.IO;
-using System.IO.Compression;
-using System.Linq;
 using System.Net.Http;
-using System.Text.Json;
-using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Media.Imaging;
+using GitHubAutoInstaller.Models;
+using GitHubAutoInstaller.Services;
 
 namespace GitHubAutoInstaller;
 
 public partial class MainWindow : Window
 {
-    private static readonly HttpClient Http = new();
+    private static readonly HttpClient Http = new()
+    {
+        Timeout = Timeout.InfiniteTimeSpan
+    };
 
-    private readonly string AppRoot = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "GitHubAutoInstaller"
-    );
-
-    private readonly string DownloadDir;
-    private readonly string InstallRoot;
+    private readonly string _downloadDirectory;
+    private readonly GitHubReleaseService _githubService;
+    private readonly FileDownloadService _downloadService;
+    private readonly AssetInstallerService _installerService;
+    private CancellationTokenSource? _operationCancellation;
+    private bool _closeAfterCancellation;
 
     public MainWindow()
     {
         InitializeComponent();
 
-        DownloadDir = Path.Combine(AppRoot, "Downloads");
-        InstallRoot = Path.Combine(
+        string appRoot = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "GitHubTools"
-        );
+            "GitHubAutoInstaller");
+        _downloadDirectory = Path.Combine(appRoot, "Downloads");
+        string installRoot = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "GitHubTools");
 
-        Directory.CreateDirectory(DownloadDir);
-        Directory.CreateDirectory(InstallRoot);
+        Directory.CreateDirectory(_downloadDirectory);
+        _githubService = new GitHubReleaseService(Http);
+        _downloadService = new FileDownloadService(Http);
+        _installerService = new AssetInstallerService(installRoot);
+    }
 
-        Http.DefaultRequestHeaders.UserAgent.ParseAdd("GitHubAutoInstaller/1.0");
+    protected override void OnClosing(CancelEventArgs e)
+    {
+        if (_operationCancellation is not null && !_closeAfterCancellation)
+        {
+            e.Cancel = true;
+            MessageBoxResult result = MessageBox.Show(
+                "An installation is active. Cancel it and close the application?",
+                "Installation Active",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+
+            if (result == MessageBoxResult.Yes)
+            {
+                _closeAfterCancellation = true;
+                _operationCancellation.Cancel();
+            }
+
+            return;
+        }
+
+        base.OnClosing(e);
     }
 
     private void PasteButton_Click(object sender, RoutedEventArgs e)
     {
         if (!Clipboard.ContainsText())
         {
-            MessageBox.Show("Clipboard is empty.", "Paste", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(
+                "Clipboard is empty.",
+                "Paste",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
             return;
         }
 
         string text = Clipboard.GetText().Trim();
 
-        if (!text.StartsWith("https://github.com/", StringComparison.OrdinalIgnoreCase))
+        try
         {
-            MessageBox.Show("Clipboard does not contain a valid GitHub repository URL.", "Invalid Clipboard", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
+            GitHubRepositoryParser.Parse(text);
+            UrlBox.Text = text;
         }
-
-        UrlBox.Text = text;
+        catch (ArgumentException exception)
+        {
+            MessageBox.Show(
+                exception.Message,
+                "Invalid Clipboard",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
     }
 
     private async void GoButton_Click(object sender, RoutedEventArgs e)
     {
-        GoButton.IsEnabled = false;
-        PasteButton.IsEnabled = false;
+        if (_operationCancellation is not null)
+        {
+            _operationCancellation.Cancel();
+            return;
+        }
+
+        using CancellationTokenSource cancellation = new();
+        _operationCancellation = cancellation;
+        SetBusyState(isBusy: true);
         LogBox.Clear();
 
         try
         {
-            await RunInstaller();
+            await RunInstallerAsync(cancellation.Token);
         }
-        catch (Exception ex)
+        catch (OperationCanceledException)
         {
-            SetStep("Failed.", 0, true);
-            Log("ERROR: " + ex.Message);
-            MessageBox.Show(ex.Message, "Installation Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            SetStep("Cancelled.", 0);
+        }
+        catch (Exception exception)
+        {
+            SetStep("Failed.", 0);
+            Log("ERROR: " + exception.Message);
+            MessageBox.Show(
+                exception.Message,
+                "Installation Failed",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
         }
         finally
         {
-            GoButton.IsEnabled = true;
-            PasteButton.IsEnabled = true;
+            _operationCancellation = null;
+            SetBusyState(isBusy: false);
+
+            if (_closeAfterCancellation)
+            {
+                Close();
+            }
         }
     }
 
-    private async Task RunInstaller()
+    private async Task RunInstallerAsync(CancellationToken cancellationToken)
     {
         SetStep("Validating GitHub URL...", 5);
+        GitHubRepository repository = GitHubRepositoryParser.Parse(UrlBox.Text);
+        Log($"Repository detected: {repository.FullName}");
 
-        var repo = ParseGitHubUrl(UrlBox.Text.Trim());
-        Log($"Repository detected: {repo.Owner}/{repo.Name}");
+        SetStep("Loading repository and latest release...", 20);
+        Task<RepositoryMetadata> metadataTask = _githubService.GetRepositoryAsync(
+            repository,
+            cancellationToken);
+        Task<GitHubRelease> releaseTask = _githubService.GetLatestReleaseAsync(
+            repository,
+            cancellationToken);
+        await Task.WhenAll(metadataTask, releaseTask);
 
-        SetStep("Checking latest GitHub release...", 20);
+        RepositoryMetadata metadata = await metadataTask;
+        GitHubRelease release = await releaseTask;
+        ReleaseAsset asset = ReleaseAssetSelector.SelectBestWindowsX64Asset(release.Assets);
+        UpdateRepositoryCard(metadata, release, asset);
 
-        using var releaseJson = await GetLatestRelease(repo.Owner, repo.Name);
-
-        string tag = releaseJson.RootElement.GetProperty("tag_name").GetString() ?? "unknown";
-        Log("Latest release: " + tag);
-
-        SetStep("Selecting best Windows x64 asset...", 35);
-
-        var asset = SelectBestAsset(releaseJson.RootElement);
-        Log("Selected asset: " + asset.Name);
-
+        Log($"Latest release: {release.TagName}");
+        Log($"Selected asset: {asset.Name} ({FormatBytes(asset.Size)})");
         SetStep("Downloading asset...", 50);
 
-        string downloadPath = Path.Combine(DownloadDir, SafeFileName(asset.Name));
-        await DownloadFile(asset.Url, downloadPath);
+        Progress<double> downloadProgress = new(value =>
+        {
+            int percentage = 50 + (int)Math.Round(value * 20);
+            SetStep($"Downloading asset... {(int)Math.Round(value * 100)}%", percentage, writeLog: false);
+        });
 
+        string downloadPath = await _downloadService.DownloadAsync(
+            asset,
+            _downloadDirectory,
+            downloadProgress,
+            cancellationToken);
         Log("Downloaded: " + downloadPath);
 
         SetStep("Installing or extracting...", 75);
+        InstallationResult result = await _installerService.InstallAsync(
+            downloadPath,
+            repository.Name,
+            SilentCheck.IsChecked == true,
+            Log,
+            cancellationToken);
 
-        bool silentInstall = SilentCheck.IsChecked == true;
-
-        string? installedPath = await Task.Run(() =>
-            InstallAsset(downloadPath, repo.Name, silentInstall)
-        );
-
-        SetStep("Creating desktop shortcut...", 90);
-
-        bool createShortcut = ShortcutCheck.IsChecked == true;
-
-        if (!string.IsNullOrWhiteSpace(installedPath) && createShortcut)
+        if (result.ExitCode is 1_641 or 3_010)
         {
-            CreateDesktopShortcut(installedPath, repo.Name);
+            Log("Installer completed successfully; Windows restart is required.");
         }
-        else
+
+        SetStep("Finalizing...", 90);
+        if (ShortcutCheck.IsChecked == true && result.InstalledDirectory is not null)
         {
-            Log("Installer completed. Shortcut may be handled by installer.");
+            string? shortcut = DesktopShortcutService.CreateForBestExecutable(
+                result.InstalledDirectory,
+                repository.Name);
+            Log(shortcut is null
+                ? "No suitable executable was found for a desktop shortcut."
+                : "Desktop shortcut created: " + shortcut);
+        }
+        else if (ShortcutCheck.IsChecked == true)
+        {
+            Log("Package installer controls desktop shortcut creation.");
         }
 
         SetStep("Completed successfully.", 100);
-        MessageBox.Show($"{repo.Name} installed successfully.", "Completed", MessageBoxButton.OK, MessageBoxImage.Information);
-    }
-
-    private (string Owner, string Name) ParseGitHubUrl(string url)
-    {
-        if (string.IsNullOrWhiteSpace(url))
-            throw new Exception("GitHub URL is empty.");
-
-        var uri = new Uri(url);
-
-        if (!uri.Host.Equals("github.com", StringComparison.OrdinalIgnoreCase))
-            throw new Exception("Invalid GitHub URL.");
-
-        var parts = uri.AbsolutePath.Trim('/').Split('/');
-
-        if (parts.Length < 2)
-            throw new Exception("Repository URL must be like: https://github.com/user/repo");
-
-        return (parts[0], parts[1].Replace(".git", ""));
-    }
-
-    private async Task<JsonDocument> GetLatestRelease(string owner, string repo)
-    {
-        string latestUrl = $"https://api.github.com/repos/{owner}/{repo}/releases/latest";
-
-        var response = await Http.GetAsync(latestUrl);
-
-        if (!response.IsSuccessStatusCode)
-            throw new Exception("No latest release found for this repository.");
-
-        var stream = await response.Content.ReadAsStreamAsync();
-        return await JsonDocument.ParseAsync(stream);
-    }
-
-    private (string Name, string Url) SelectBestAsset(JsonElement release)
-    {
-        if (!release.TryGetProperty("assets", out var assets))
-            throw new Exception("No release assets found.");
-
-        var candidates = assets.EnumerateArray()
-            .Select(asset =>
-            {
-                string name = asset.GetProperty("name").GetString() ?? "";
-                string url = asset.GetProperty("browser_download_url").GetString() ?? "";
-
-                return new
-                {
-                    Name = name,
-                    Url = url,
-                    Score = GetAssetScore(name)
-                };
-            })
-            .Where(x => x.Score > 0)
-            .OrderByDescending(x => x.Score)
-            .ToList();
-
-        if (candidates.Count == 0)
-            throw new Exception("No supported Windows x64 installer found. Supported: .exe / .msi / .zip");
-
-        return (candidates[0].Name, candidates[0].Url);
-    }
-
-    private int GetAssetScore(string fileName)
-    {
-        string name = fileName.ToLowerInvariant();
-        int score = 0;
-
-        if (name.EndsWith(".exe")) score += 100;
-        if (name.EndsWith(".msi")) score += 95;
-        if (name.EndsWith(".zip")) score += 70;
-
-        if (name.Contains("x64") || name.Contains("amd64") || name.Contains("x86_64") || name.Contains("win64"))
-            score += 60;
-
-        if (name.Contains("windows") || name.Contains("win"))
-            score += 40;
-
-        if (name.Contains("setup") || name.Contains("installer") || name.Contains("install"))
-            score += 30;
-
-        if (name.Contains("ia32") || name.Contains("win32") || name.Contains("i386"))
-            score -= 500;
-
-        if (name.Contains("arm") || name.Contains("arm64") || name.Contains("aarch64"))
-            score -= 500;
-
-        if (name.Contains("linux") || name.Contains("mac") || name.Contains("darwin") || name.Contains("osx"))
-            score -= 500;
-
-        if (name.Contains("sha") || name.Contains("checksum") || name.Contains("blockmap") || name.EndsWith(".yml"))
-            score -= 500;
-
-        return score;
-    }
-
-    private async Task DownloadFile(string url, string outputPath)
-    {
-        if (File.Exists(outputPath))
-            File.Delete(outputPath);
-
-        using var response = await Http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
-        response.EnsureSuccessStatusCode();
-
-        long? total = response.Content.Headers.ContentLength;
-
-        await using var input = await response.Content.ReadAsStreamAsync();
-        await using var output = File.Create(outputPath);
-
-        byte[] buffer = new byte[81920];
-        long readTotal = 0;
-        int read;
-        int lastPercent = -1;
-
-        while ((read = await input.ReadAsync(buffer, 0, buffer.Length)) > 0)
+        if (NotifyCheck.IsChecked == true)
         {
-            await output.WriteAsync(buffer, 0, read);
-            readTotal += read;
-
-            if (total.HasValue && total.Value > 0)
-            {
-                int percent = 50 + (int)((readTotal * 20) / total.Value);
-                percent = Math.Min(percent, 70);
-
-                if (percent != lastPercent)
-                {
-                    ProgressBar.Value = percent;
-                    PercentText.Text = percent + "%";
-                    StepText.Text = $"Downloading asset... {percent}%";
-                    lastPercent = percent;
-                }
-            }
+            MessageBox.Show(
+                $"{repository.Name} installed successfully.",
+                "Completed",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
         }
-
-        ProgressBar.Value = 70;
-        PercentText.Text = "70%";
-        StepText.Text = "Download completed.";
     }
 
-    private string? InstallAsset(string filePath, string repoName, bool silentInstall)
+    private void UpdateRepositoryCard(
+        RepositoryMetadata metadata,
+        GitHubRelease release,
+        ReleaseAsset asset)
     {
-        string ext = Path.GetExtension(filePath).ToLowerInvariant();
+        RepoTitle.Text = metadata.FullName;
+        RepoDescription.Text = metadata.Description;
+        RepoVersion.Text = release.TagName;
+        RepoStars.Text = metadata.Stars.ToString("N0");
+        RepoAsset.Text = asset.Name;
 
-        if (ext == ".msi")
+        if (metadata.AvatarUrl is not null)
         {
-            RunInstallerProcess(
-                "msiexec.exe",
-                silentInstall
-                    ? $"/i \"{filePath}\" /qn /norestart"
-                    : $"/i \"{filePath}\""
-            );
-
-            return null;
+            RepoAvatar.Source = new BitmapImage(metadata.AvatarUrl);
         }
-
-        if (ext == ".exe")
-        {
-            string args = silentInstall
-                ? DetectSilentArguments(filePath)
-                : "";
-
-            RunInstallerProcess(filePath, args);
-            return null;
-        }
-
-        if (ext == ".zip")
-        {
-            string target = Path.Combine(InstallRoot, repoName);
-
-            if (Directory.Exists(target))
-                Directory.Delete(target, true);
-
-            Directory.CreateDirectory(target);
-            ZipFile.ExtractToDirectory(filePath, target, true);
-
-            return target;
-        }
-
-        throw new Exception($"Unsupported file type: {ext}");
     }
 
-    private string DetectSilentArguments(string filePath)
+    private void SetBusyState(bool isBusy)
     {
-        string name = Path.GetFileName(filePath).ToLowerInvariant();
-
-        if (name.Contains("inno"))
+        PasteButton.IsEnabled = !isBusy;
+        UrlBox.IsEnabled = !isBusy;
+        SilentCheck.IsEnabled = !isBusy;
+        ShortcutCheck.IsEnabled = !isBusy;
+        NotifyCheck.IsEnabled = !isBusy;
+        GoButton.Content = new System.Windows.Controls.TextBlock
         {
-            Log("Detected: Inno Setup");
-            return "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART";
-        }
-
-        if (name.Contains("nsis"))
-        {
-            Log("Detected: NSIS");
-            return "/S";
-        }
-
-        if (name.Contains("squirrel"))
-        {
-            Log("Detected: Squirrel");
-            return "--silent";
-        }
-
-        if (name.Contains("electron"))
-        {
-            Log("Detected: Electron Builder");
-            return "--silent";
-        }
-
-        Log("Unknown installer type. Launching normal installer.");
-        return "";
-    }
-
-    private void RunInstallerProcess(string fileName, string arguments)
-    {
-        var process = Process.Start(new ProcessStartInfo
-        {
-            FileName = fileName,
-            Arguments = arguments,
-            UseShellExecute = true
-        });
-
-        process?.WaitForExit();
-    }
-
-    private void CreateDesktopShortcut(string installPath, string repoName)
-    {
-        var exe = Directory.GetFiles(installPath, "*.exe", SearchOption.AllDirectories)
-            .Where(x =>
-            {
-                string n = Path.GetFileName(x).ToLowerInvariant();
-
-                return !n.Contains("uninstall") &&
-                       !n.Contains("update") &&
-                       !n.Contains("crash") &&
-                       !n.Contains("helper");
-            })
-            .OrderByDescending(x =>
-            {
-                var info = FileVersionInfo.GetVersionInfo(x);
-                int score = 0;
-
-                if (!string.IsNullOrWhiteSpace(info.ProductName)) score += 100;
-                if (!string.IsNullOrWhiteSpace(info.FileDescription)) score += 50;
-                score += (int)Math.Min(new FileInfo(x).Length / 1024 / 1024, 50);
-
-                return score;
-            })
-            .FirstOrDefault();
-
-        if (exe == null)
-        {
-            Log("No executable detected for shortcut.");
-            return;
-        }
-
-        string desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
-        string shortcutPath = Path.Combine(desktop, repoName + ".lnk");
-
-        Type? shellType = Type.GetTypeFromProgID("WScript.Shell");
-        dynamic shell = Activator.CreateInstance(shellType!)!;
-        dynamic shortcut = shell.CreateShortcut(shortcutPath);
-
-        shortcut.TargetPath = exe;
-        shortcut.WorkingDirectory = Path.GetDirectoryName(exe);
-        shortcut.IconLocation = exe;
-        shortcut.Save();
-
-        Log("Desktop shortcut created: " + shortcutPath);
-    }
-
-    private string SafeFileName(string name)
-    {
-        foreach (char c in Path.GetInvalidFileNameChars())
-            name = name.Replace(c, '_');
-
-        return name;
+            Text = isBusy ? "Cancel" : "Install",
+            Foreground = System.Windows.Media.Brushes.White,
+            FontSize = 14
+        };
     }
 
     private void SetStep(string text, int percent, bool writeLog = true)
@@ -413,7 +250,9 @@ public partial class MainWindow : Window
         PercentText.Text = percent + "%";
 
         if (writeLog)
+        {
             Log(text);
+        }
     }
 
     private void Log(string text)
@@ -423,5 +262,24 @@ public partial class MainWindow : Window
             LogBox.AppendText($"[{DateTime.Now:HH:mm:ss}] {text}\r\n");
             LogBox.ScrollToEnd();
         });
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        if (bytes <= 0)
+        {
+            return "unknown size";
+        }
+
+        string[] units = ["B", "KB", "MB", "GB"];
+        double value = bytes;
+        int unit = 0;
+        while (value >= 1_024 && unit < units.Length - 1)
+        {
+            value /= 1_024;
+            unit++;
+        }
+
+        return $"{value:0.##} {units[unit]}";
     }
 }
