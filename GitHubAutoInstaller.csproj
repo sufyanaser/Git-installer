@@ -1,0 +1,21 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <Product>GitHub Auto Installer</Product>
+    <Description>Install Windows applications directly from GitHub Releases.</Description>
+    <Version>1.0.0</Version>
+    <Authors>NAS</Authors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="GitHubAutoInstaller.SmokeTests\**\*.cs" />
+  </ItemGroup>
+
+</Project>
