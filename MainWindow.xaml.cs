@@ -1,7 +1,10 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
+using System.Security.Cryptography;
 using System.Windows;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using GitHubAutoInstaller.Models;
 using GitHubAutoInstaller.Services;
@@ -117,6 +120,8 @@ public partial class MainWindow : Window
         {
             SetStep("Failed.", 0);
             Log("ERROR: " + exception.Message);
+            _operationCancellation = null;
+            SetBusyState(isBusy: false);
             MessageBox.Show(
                 exception.Message,
                 "Installation Failed",
@@ -157,6 +162,19 @@ public partial class MainWindow : Window
 
         Log($"Latest release: {release.TagName}");
         Log($"Selected asset: {asset.Name} ({FormatBytes(asset.Size)})");
+        SetStep("Asset inspected. Waiting for confirmation...", 40);
+
+        MessageBoxResult confirmation = MessageBox.Show(
+            $"Install {asset.Name}?\n\nRelease: {release.TagName}\nSize: {FormatBytes(asset.Size)}",
+            "Confirm Installation",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+
+        if (confirmation != MessageBoxResult.Yes)
+        {
+            throw new OperationCanceledException("Installation was cancelled before download.");
+        }
+
         SetStep("Downloading asset...", 50);
 
         Progress<double> downloadProgress = new(value =>
@@ -171,6 +189,7 @@ public partial class MainWindow : Window
             downloadProgress,
             cancellationToken);
         Log("Downloaded: " + downloadPath);
+        Log("SHA-256: " + await ComputeSha256Async(downloadPath, cancellationToken));
 
         SetStep("Installing or extracting...", 75);
         InstallationResult result = await _installerService.InstallAsync(
@@ -203,6 +222,8 @@ public partial class MainWindow : Window
         SetStep("Completed successfully.", 100);
         if (NotifyCheck.IsChecked == true)
         {
+            _operationCancellation = null;
+            SetBusyState(isBusy: false);
             MessageBox.Show(
                 $"{repository.Name} installed successfully.",
                 "Completed",
@@ -235,12 +256,7 @@ public partial class MainWindow : Window
         SilentCheck.IsEnabled = !isBusy;
         ShortcutCheck.IsEnabled = !isBusy;
         NotifyCheck.IsEnabled = !isBusy;
-        GoButton.Content = new System.Windows.Controls.TextBlock
-        {
-            Text = isBusy ? "Cancel" : "Install",
-            Foreground = System.Windows.Media.Brushes.White,
-            FontSize = 14
-        };
+        GoButton.Content = isBusy ? "Cancel" : "Inspect & Install";
     }
 
     private void SetStep(string text, int percent, bool writeLog = true)
@@ -248,11 +264,77 @@ public partial class MainWindow : Window
         StepText.Text = text;
         ProgressBar.Value = percent;
         PercentText.Text = percent + "%";
+        UpdateStatus(text, percent);
 
         if (writeLog)
         {
             Log(text);
         }
+    }
+
+    private void OpenDownloadsButton_Click(object sender, RoutedEventArgs e)
+    {
+        Directory.CreateDirectory(_downloadDirectory);
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = _downloadDirectory,
+            UseShellExecute = true
+        });
+    }
+
+    private void CopyLogButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!string.IsNullOrWhiteSpace(LogBox.Text))
+        {
+            Clipboard.SetText(LogBox.Text);
+        }
+    }
+
+    private void ClearLogButton_Click(object sender, RoutedEventArgs e)
+    {
+        LogBox.Clear();
+    }
+
+    private void UpdateStatus(string step, int percent)
+    {
+        string status;
+        string brushKey;
+        Color dotColor;
+
+        if (step.StartsWith("Failed", StringComparison.OrdinalIgnoreCase))
+        {
+            status = "ERROR";
+            brushKey = "StatusErrorBrush";
+            dotColor = Color.FromRgb(254, 202, 202);
+        }
+        else if (step.StartsWith("Cancelled", StringComparison.OrdinalIgnoreCase))
+        {
+            status = "CANCELLED";
+            brushKey = "StatusWarningBrush";
+            dotColor = Color.FromRgb(254, 240, 138);
+        }
+        else if (percent >= 100)
+        {
+            status = "COMPLETE";
+            brushKey = "StatusSuccessBrush";
+            dotColor = Color.FromRgb(167, 243, 208);
+        }
+        else if (percent > 0)
+        {
+            status = "WORKING";
+            brushKey = "StatusWorkingBrush";
+            dotColor = Color.FromRgb(191, 219, 254);
+        }
+        else
+        {
+            status = "READY";
+            brushKey = "StatusReadyBrush";
+            dotColor = Color.FromRgb(203, 213, 225);
+        }
+
+        StatusText.Text = status;
+        StatusBadge.Background = (Brush)FindResource(brushKey);
+        StatusDot.Fill = new SolidColorBrush(dotColor);
     }
 
     private void Log(string text)
@@ -281,5 +363,20 @@ public partial class MainWindow : Window
         }
 
         return $"{value:0.##} {units[unit]}";
+    }
+
+    private static async Task<string> ComputeSha256Async(
+        string filePath,
+        CancellationToken cancellationToken)
+    {
+        await using FileStream stream = new(
+            filePath,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            bufferSize: 81_920,
+            useAsync: true);
+        byte[] hash = await SHA256.HashDataAsync(stream, cancellationToken);
+        return Convert.ToHexString(hash);
     }
 }
