@@ -16,12 +16,15 @@ public static class ReleaseAssetSelector
             .FirstOrDefault();
 
         return selected ?? throw new InvalidOperationException(
-            "No supported Windows x64 asset was found. Supported formats: .exe, .msi, and .zip.");
+            "No supported Windows asset was found. Supported formats: .exe, .msi, .zip, and .ps1.");
     }
 
     internal static int Score(string fileName)
     {
-        string name = fileName.ToLowerInvariant();
+        string name = fileName
+            .ToLowerInvariant()
+            .Replace("x86_64", "x64", StringComparison.Ordinal)
+            .Replace("x86-64", "x64", StringComparison.Ordinal);
         string extension = Path.GetExtension(name);
 
         int score = extension switch
@@ -29,6 +32,7 @@ public static class ReleaseAssetSelector
             ".exe" => 300,
             ".msi" => 280,
             ".zip" => 180,
+            ".ps1" => 120,
             _ => -1_000
         };
 
@@ -47,7 +51,7 @@ public static class ReleaseAssetSelector
             return -1_000;
         }
 
-        if (ContainsAny(name, "x64", "amd64", "x86_64", "win64")) score += 140;
+        if (ContainsAny(name, "x64", "amd64", "win64")) score += 140;
         if (ContainsAny(name, "windows", "win")) score += 80;
         if (ContainsAny(name, "setup", "installer", "install")) score += 40;
         if (ContainsAny(name, "portable")) score -= 30;

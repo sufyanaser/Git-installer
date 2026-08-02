@@ -164,11 +164,18 @@ public partial class MainWindow : Window
         Log($"Selected asset: {asset.Name} ({FormatBytes(asset.Size)})");
         SetStep("Asset inspected. Waiting for confirmation...", 40);
 
+        bool isPowerShellAsset = Path.GetExtension(asset.Name)
+            .Equals(".ps1", StringComparison.OrdinalIgnoreCase);
+        string confirmationMessage = isPowerShellAsset
+            ? $"Run the PowerShell asset {asset.Name}?\n\nRelease: {release.TagName}\nSize: {FormatBytes(asset.Size)}\n\nPowerShell scripts can modify Windows settings. Continue only if you trust {repository.FullName}."
+            : $"Install {asset.Name}?\n\nRelease: {release.TagName}\nSize: {FormatBytes(asset.Size)}";
+
         MessageBoxResult confirmation = MessageBox.Show(
-            $"Install {asset.Name}?\n\nRelease: {release.TagName}\nSize: {FormatBytes(asset.Size)}",
-            "Confirm Installation",
+            confirmationMessage,
+            isPowerShellAsset ? "Confirm PowerShell Script" : "Confirm Installation",
             MessageBoxButton.YesNo,
-            MessageBoxImage.Question);
+            isPowerShellAsset ? MessageBoxImage.Warning : MessageBoxImage.Question,
+            MessageBoxResult.No);
 
         if (confirmation != MessageBoxResult.Yes)
         {

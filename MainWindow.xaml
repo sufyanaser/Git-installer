@@ -204,7 +204,7 @@
                                     Background="#243044"
                                     CornerRadius="8"
                                     Padding="9,5">
-                                <TextBlock Text="EXE / MSI / ZIP"
+                                <TextBlock Text="EXE / MSI / ZIP / PS1"
                                            Foreground="#A9BBD5"
                                            FontSize="9"
                                            FontWeight="Bold"/>
@@ -235,7 +235,7 @@
                     <TextBlock Text="GitHub API · Public repositories"
                                Foreground="{StaticResource MutedBrush}"
                                FontSize="11"/>
-                    <TextBlock Text="Build 1.0.0 · win-x64"
+                    <TextBlock Text="Build 1.0.1 · win-x64"
                                Margin="0,5,0,0"
                                Foreground="#657286"
                                FontSize="10"/>

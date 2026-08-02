@@ -45,8 +45,29 @@ public sealed class AssetInstallerService
                     () => ExtractZipAtomically(filePath, repositoryName, cancellationToken),
                     cancellationToken),
                 0),
+            ".ps1" => new InstallationResult(
+                null,
+                await RunPowerShellScriptAsync(filePath, silent, log, cancellationToken)),
             _ => throw new InvalidOperationException($"Unsupported asset type: {extension}")
         };
+    }
+
+    private static Task<int> RunPowerShellScriptAsync(
+        string filePath,
+        bool silent,
+        Action<string> log,
+        CancellationToken cancellationToken)
+    {
+        if (silent)
+        {
+            log("Silent mode is ignored for PowerShell assets; the script will run interactively.");
+        }
+
+        log("Launching the PowerShell asset in an isolated, no-profile session.");
+        return RunProcessAsync(
+            "powershell.exe",
+            $"-NoLogo -NoProfile -File \"{filePath}\"",
+            cancellationToken);
     }
 
     private static string DetectSilentArguments(string filePath, Action<string> log)

@@ -26,6 +26,26 @@ Assert(
     selected.Name == "application-windows-x64-setup.exe",
     "Windows x64 installer selection failed.");
 
+ReleaseAsset x86AliasSelected = ReleaseAssetSelector.SelectBestWindowsX64Asset(
+[
+    Asset("application-windows-x86-setup.exe", 900),
+    Asset("application-windows-x86_64.zip", 800)
+]);
+
+Assert(
+    x86AliasSelected.Name == "application-windows-x86_64.zip",
+    "The valid x86_64 alias was incorrectly rejected as 32-bit x86.");
+
+ReleaseAsset powerShellSelected = ReleaseAssetSelector.SelectBestWindowsX64Asset(
+[
+    Asset("checksums.txt", 900),
+    Asset("Get.ps1", 800)
+]);
+
+Assert(
+    powerShellSelected.Name == "Get.ps1",
+    "A PowerShell-only Windows release asset was not selected.");
+
 string testRoot = Path.Combine(
     Path.GetTempPath(),
     "GitHubAutoInstallerSmokeTests",
