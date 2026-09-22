@@ -157,7 +157,24 @@ public partial class MainWindow : Window
 
         RepositoryMetadata metadata = await metadataTask;
         GitHubRelease release = await releaseTask;
-        ReleaseAsset asset = ReleaseAssetSelector.SelectBestWindowsX64Asset(release.Assets);
+        ReleaseAsset asset;
+        try
+        {
+            asset = ReleaseAssetSelector.SelectBestWindowsX64Asset(release.Assets);
+        }
+        catch (InvalidOperationException exception)
+        {
+            UpdateRepositoryCard(metadata, release, asset: null);
+            Log($"Latest release: {release.TagName}");
+            Log(release.Assets.Count == 0
+                ? "Release assets: none uploaded."
+                : "Release assets: " + string.Join(", ", release.Assets.Select(item => item.Name)));
+            Log("Release page: " + release.PageUrl);
+            throw new InvalidOperationException(
+                $"{exception.Message}\n\nRelease: {release.TagName}\n{release.PageUrl}\n\nThis repository may require a package manager or installation instructions from its documentation.",
+                exception);
+        }
+
         UpdateRepositoryCard(metadata, release, asset);
 
         Log($"Latest release: {release.TagName}");
@@ -242,13 +259,13 @@ public partial class MainWindow : Window
     private void UpdateRepositoryCard(
         RepositoryMetadata metadata,
         GitHubRelease release,
-        ReleaseAsset asset)
+        ReleaseAsset? asset)
     {
         RepoTitle.Text = metadata.FullName;
         RepoDescription.Text = metadata.Description;
         RepoVersion.Text = release.TagName;
         RepoStars.Text = metadata.Stars.ToString("N0");
-        RepoAsset.Text = asset.Name;
+        RepoAsset.Text = asset?.Name ?? "No compatible asset";
 
         if (metadata.AvatarUrl is not null)
         {

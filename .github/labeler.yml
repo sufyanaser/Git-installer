@@ -1,0 +1,16 @@
+application:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "**/*.cs"
+          - "**/*.xaml"
+installer:
+  - changed-files:
+      - any-glob-to-any-file: "installer/**"
+ci:
+  - changed-files:
+      - any-glob-to-any-file: ".github/**"
+documentation:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "README.md"
+          - "CHANGELOG.md"

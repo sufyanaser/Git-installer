@@ -5,9 +5,14 @@ namespace GitHubAutoInstaller.Services;
 
 public static class ReleaseAssetSelector
 {
+    public static readonly string[] SupportedExtensions = [".exe", ".msi", ".zip", ".ps1"];
+
     public static ReleaseAsset SelectBestWindowsX64Asset(IEnumerable<ReleaseAsset> assets)
     {
-        ReleaseAsset? selected = assets
+        ArgumentNullException.ThrowIfNull(assets);
+        IReadOnlyList<ReleaseAsset> availableAssets = assets.ToList();
+
+        ReleaseAsset? selected = availableAssets
             .Select(asset => new { Asset = asset, Score = Score(asset.Name) })
             .Where(candidate => candidate.Score > 0)
             .OrderByDescending(candidate => candidate.Score)
@@ -15,8 +20,17 @@ public static class ReleaseAssetSelector
             .Select(candidate => candidate.Asset)
             .FirstOrDefault();
 
-        return selected ?? throw new InvalidOperationException(
-            "No supported Windows asset was found. Supported formats: .exe, .msi, .zip, and .ps1.");
+        if (selected is not null)
+        {
+            return selected;
+        }
+
+        string detail = availableAssets.Count == 0
+            ? "The release has no uploaded assets. GitHub's automatic source archives are not Windows installers."
+            : $"The release assets are not compatible: {string.Join(", ", availableAssets.Select(asset => asset.Name))}.";
+
+        throw new InvalidOperationException(
+            $"No supported Windows x64 asset was found. {detail} Supported formats: {string.Join(", ", SupportedExtensions)}.");
     }
 
     internal static int Score(string fileName)

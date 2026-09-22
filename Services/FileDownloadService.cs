@@ -6,11 +6,19 @@ namespace GitHubAutoInstaller.Services;
 
 public sealed class FileDownloadService
 {
-    private readonly HttpClient _httpClient;
+    public const long DefaultMaximumDownloadBytes = 2L * 1024 * 1024 * 1024;
 
-    public FileDownloadService(HttpClient httpClient)
+    private readonly HttpClient _httpClient;
+    private readonly long _maximumDownloadBytes;
+
+    public FileDownloadService(
+        HttpClient httpClient,
+        long maximumDownloadBytes = DefaultMaximumDownloadBytes)
     {
         _httpClient = httpClient;
+        _maximumDownloadBytes = maximumDownloadBytes > 0
+            ? maximumDownloadBytes
+            : throw new ArgumentOutOfRangeException(nameof(maximumDownloadBytes));
     }
 
     public async Task<string> DownloadAsync(
@@ -19,6 +27,17 @@ public sealed class FileDownloadService
         IProgress<double> progress,
         CancellationToken cancellationToken)
     {
+        if (asset.DownloadUrl.Scheme != Uri.UriSchemeHttps)
+        {
+            throw new InvalidOperationException("Release assets must use a secure HTTPS download URL.");
+        }
+
+        if (asset.Size > _maximumDownloadBytes)
+        {
+            throw new InvalidOperationException(
+                $"The release asset exceeds the {FormatBytes(_maximumDownloadBytes)} download limit.");
+        }
+
         Directory.CreateDirectory(directory);
 
         string outputPath = Path.Combine(directory, ToSafeFileName(asset.Name));
@@ -38,6 +57,11 @@ public sealed class FileDownloadService
             response.EnsureSuccessStatusCode();
 
             long? contentLength = response.Content.Headers.ContentLength;
+            if (contentLength > _maximumDownloadBytes)
+            {
+                throw new InvalidOperationException(
+                    $"The server response exceeds the {FormatBytes(_maximumDownloadBytes)} download limit.");
+            }
             await using (Stream input = await response.Content.ReadAsStreamAsync(cancellationToken))
             await using (FileStream output = new(
                 temporaryPath,
@@ -61,6 +85,12 @@ public sealed class FileDownloadService
                     await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
                     bytesRead += read;
 
+                    if (bytesRead > _maximumDownloadBytes)
+                    {
+                        throw new InvalidOperationException(
+                            $"The download exceeded the {FormatBytes(_maximumDownloadBytes)} limit.");
+                    }
+
                     if (contentLength is > 0)
                     {
                         progress.Report(Math.Clamp((double)bytesRead / contentLength.Value, 0, 1));
@@ -68,6 +98,12 @@ public sealed class FileDownloadService
                 }
 
                 await output.FlushAsync(cancellationToken);
+
+                if (asset.Size > 0 && bytesRead != asset.Size)
+                {
+                    throw new InvalidOperationException(
+                        $"The downloaded size ({bytesRead} bytes) does not match GitHub's asset size ({asset.Size} bytes).");
+                }
             }
 
             File.Move(temporaryPath, outputPath, overwrite: true);
@@ -85,6 +121,8 @@ public sealed class FileDownloadService
             throw;
         }
     }
+
+    private static string FormatBytes(long bytes) => $"{bytes / (1024d * 1024 * 1024):0.##} GB";
 
     private static string ToSafeFileName(string fileName)
     {

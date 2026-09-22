@@ -7,6 +7,8 @@ namespace GitHubAutoInstaller.Services;
 
 public sealed class AssetInstallerService
 {
+    private const int MaximumZipEntries = 10_000;
+    private const long MaximumExtractedBytes = 4L * 1024 * 1024 * 1024;
     private readonly string _installRoot;
 
     public AssetInstallerService(string installRoot)
@@ -155,9 +157,28 @@ public sealed class AssetInstallerService
         try
         {
             using ZipArchive archive = ZipFile.OpenRead(filePath);
+            if (archive.Entries.Count > MaximumZipEntries)
+            {
+                throw new InvalidOperationException("The ZIP asset contains too many entries.");
+            }
+
+            long extractedBytes = 0;
             foreach (ZipArchiveEntry entry in archive.Entries)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+
+                if (IsSymbolicLink(entry))
+                {
+                    throw new InvalidOperationException("The ZIP asset contains a symbolic link, which is not supported.");
+                }
+
+                extractedBytes = checked(extractedBytes + entry.Length);
+                if (extractedBytes > MaximumExtractedBytes)
+                {
+                    throw new InvalidOperationException("The ZIP asset expands beyond the 4 GB safety limit.");
+                }
+
+                ValidateZipEntryName(entry.FullName);
 
                 string destination = Path.GetFullPath(Path.Combine(temporary, entry.FullName));
                 string extractionRoot = Path.GetFullPath(temporary) + Path.DirectorySeparatorChar;
@@ -210,6 +231,26 @@ public sealed class AssetInstallerService
             }
 
             throw;
+        }
+    }
+
+    private static bool IsSymbolicLink(ZipArchiveEntry entry)
+    {
+        const int UnixFileTypeMask = 0xF000;
+        const int UnixSymbolicLink = 0xA000;
+        int unixMode = (entry.ExternalAttributes >> 16) & UnixFileTypeMask;
+        return unixMode == UnixSymbolicLink;
+    }
+
+    private static void ValidateZipEntryName(string entryName)
+    {
+        string[] segments = entryName.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Any(segment =>
+            segment is "." or ".." ||
+            segment.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 ||
+            segment.Contains(':', StringComparison.Ordinal)))
+        {
+            throw new InvalidOperationException("The ZIP asset contains an unsafe file name.");
         }
     }
 }

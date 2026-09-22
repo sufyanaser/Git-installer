@@ -46,6 +46,14 @@ Assert(
     powerShellSelected.Name == "Get.ps1",
     "A PowerShell-only Windows release asset was not selected.");
 
+AssertThrows<InvalidOperationException>(
+    () => ReleaseAssetSelector.SelectBestWindowsX64Asset([]),
+    "A release without uploaded assets must be rejected clearly.");
+
+AssertThrows<InvalidOperationException>(
+    () => ReleaseAssetSelector.SelectBestWindowsX64Asset([Asset("package.whl", 100)]),
+    "A package-manager artifact must not be treated as a Windows installer.");
+
 string testRoot = Path.Combine(
     Path.GetTempPath(),
     "GitHubAutoInstallerSmokeTests",
@@ -55,7 +63,9 @@ try
 {
     Directory.CreateDirectory(testRoot);
     await VerifyAtomicDownloadAsync(testRoot);
+    await VerifyDownloadSizeMismatchAsync(testRoot);
     await VerifyZipInstallationAsync(testRoot);
+    await VerifyZipTraversalIsRejectedAsync(testRoot);
 }
 finally
 {
@@ -63,6 +73,25 @@ finally
     {
         Directory.Delete(testRoot, recursive: true);
     }
+}
+
+static async Task VerifyZipTraversalIsRejectedAsync(string testRoot)
+{
+    string zipPath = Path.Combine(testRoot, "unsafe.zip");
+    using (ZipArchive archive = ZipFile.Open(zipPath, ZipArchiveMode.Create))
+    {
+        archive.CreateEntry("../outside.exe");
+    }
+
+    AssetInstallerService service = new(Path.Combine(testRoot, "unsafe-installed"));
+    await AssertThrowsAsync<InvalidOperationException>(
+        () => service.InstallAsync(
+            zipPath,
+            "unsafe-repository",
+            silent: false,
+            _ => { },
+            CancellationToken.None),
+        "A ZIP path traversal entry must be rejected.");
 }
 
 Console.WriteLine("Smoke tests passed.");
@@ -129,6 +158,36 @@ static void AssertThrows<TException>(Action action, string message)
     try
     {
         action();
+    }
+    catch (TException)
+    {
+        return;
+    }
+
+    throw new InvalidOperationException(message);
+}
+
+static async Task VerifyDownloadSizeMismatchAsync(string testRoot)
+{
+    byte[] payload = "short"u8.ToArray();
+    using HttpClient httpClient = new(new StaticResponseHandler(payload));
+    FileDownloadService service = new(httpClient);
+
+    await AssertThrowsAsync<InvalidOperationException>(
+        () => service.DownloadAsync(
+            Asset("wrong-size.zip", payload.Length + 1),
+            Path.Combine(testRoot, "mismatch"),
+            new Progress<double>(),
+            CancellationToken.None),
+        "A truncated or inconsistent download must be rejected.");
+}
+
+static async Task AssertThrowsAsync<TException>(Func<Task> action, string message)
+    where TException : Exception
+{
+    try
+    {
+        await action();
     }
     catch (TException)
     {
