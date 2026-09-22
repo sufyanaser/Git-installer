@@ -1,0 +1,59 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Verify tag matches project version
+        shell: pwsh
+        run: |
+          $project = [xml](Get-Content GitHubAutoInstaller.csproj)
+          $version = $project.Project.PropertyGroup.Version
+          if ("v$version" -ne $env:GITHUB_REF_NAME) {
+            throw "Tag $env:GITHUB_REF_NAME does not match project version $version."
+          }
+      - name: Restore
+        run: dotnet restore GitHubAutoInstaller.SmokeTests/GitHubAutoInstaller.SmokeTests.csproj
+      - name: Verify formatting
+        run: dotnet format GitHubAutoInstaller.SmokeTests/GitHubAutoInstaller.SmokeTests.csproj --no-restore --verify-no-changes
+      - name: Build and test
+        run: |
+          dotnet build GitHubAutoInstaller.SmokeTests/GitHubAutoInstaller.SmokeTests.csproj --no-restore --configuration Release
+          dotnet run --no-build --configuration Release --project GitHubAutoInstaller.SmokeTests/GitHubAutoInstaller.SmokeTests.csproj
+      - name: Publish application
+        run: dotnet publish GitHubAutoInstaller.csproj --configuration Release --runtime win-x64 --self-contained true -p:PublishSingleFile=true -o artifacts/publish
+      - name: Install Inno Setup
+        run: choco install innosetup --yes --no-progress
+      - name: Build installer
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifacts/release | Out-Null
+          $source = (Resolve-Path artifacts/publish).Path
+          $output = (Resolve-Path artifacts/release).Path
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DAppVersion=$($env:GITHUB_REF_NAME.TrimStart('v'))" "/DSourceDir=$source" "/DOutputDir=$output" installer/GitHubAutoInstaller.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item artifacts/publish/GitHubAutoInstaller.exe artifacts/release/GitHubAutoInstaller-$($env:GITHUB_REF_NAME)-win-x64.exe
+      - name: Generate checksums
+        shell: pwsh
+        run: |
+          Get-ChildItem artifacts/release -File | Sort-Object Name | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $($_.Name)"
+          } | Set-Content artifacts/release/SHA256SUMS.txt
+      - name: Create GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create $env:GITHUB_REF_NAME artifacts/release/* --title "GitHub Auto Installer $env:GITHUB_REF_NAME" --generate-notes --verify-tag

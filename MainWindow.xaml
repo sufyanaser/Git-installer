@@ -235,7 +235,7 @@
                     <TextBlock Text="GitHub API · Public repositories"
                                Foreground="{StaticResource MutedBrush}"
                                FontSize="11"/>
-                    <TextBlock Text="Build 1.0.1 · win-x64"
+                    <TextBlock Text="Build 1.1.0 · win-x64"
                                Margin="0,5,0,0"
                                Foreground="#657286"
                                FontSize="10"/>

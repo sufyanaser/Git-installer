@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.1.0 - 2026-09-22
 
 - Explain releases with no uploaded assets or incompatible package formats.
 - Show the inspected release and its URL when no Windows x64 asset can be installed.
@@ -8,6 +8,7 @@
 - Harden ZIP extraction against traversal, symbolic links, unsafe names, entry floods, and oversized expansion.
 - Add CI build, formatting, smoke-test, and publish verification.
 - Add project usage, limitations, build, and security documentation.
+- Add an automated, checksummed GitHub Release pipeline.
 
 ## 1.0.1 - 2026-08-02
 
