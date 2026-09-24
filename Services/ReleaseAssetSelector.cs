@@ -5,7 +5,7 @@ namespace GitHubAutoInstaller.Services;
 
 public static class ReleaseAssetSelector
 {
-    public static readonly string[] SupportedExtensions = [".exe", ".msi", ".zip", ".ps1"];
+    public static readonly string[] SupportedExtensions = [".exe", ".msi", ".zip", ".7z", ".ps1"];
 
     public static ReleaseAsset SelectBestWindowsX64Asset(IEnumerable<ReleaseAsset> assets)
     {
@@ -46,6 +46,7 @@ public static class ReleaseAssetSelector
             ".exe" => 300,
             ".msi" => 280,
             ".zip" => 180,
+            ".7z" => 175,
             ".ps1" => 120,
             _ => -1_000
         };

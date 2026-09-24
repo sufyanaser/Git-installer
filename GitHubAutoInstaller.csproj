@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -9,13 +9,25 @@
     <ApplicationIcon>app.ico</ApplicationIcon>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <Product>GitHub Auto Installer</Product>
-    <Description>Install Windows applications directly from GitHub Releases.</Description>
-    <Version>1.1.0</Version>
+    <Description>Repository-Aware Windows installer and deployment utility for GitHub repositories.</Description>
+    <Version>1.2.0</Version>
     <Authors>NAS</Authors>
   </PropertyGroup>
 
   <ItemGroup>
     <Compile Remove="GitHubAutoInstaller.SmokeTests\**\*.cs" />
   </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SharpCompress" Version="0.50.4" />
+  </ItemGroup>
+
+  <Target Name="RestoreSmokeTests" AfterTargets="Restore">
+    <MSBuild Projects="GitHubAutoInstaller.SmokeTests\GitHubAutoInstaller.SmokeTests.csproj" Targets="Restore" />
+  </Target>
+
+  <Target Name="BuildSmokeTests" AfterTargets="Build" Condition="'$(BuildingSmokeTests)' != 'true'">
+    <MSBuild Projects="GitHubAutoInstaller.SmokeTests\GitHubAutoInstaller.SmokeTests.csproj" Targets="Build" Properties="Configuration=$(Configuration);BuildingSmokeTests=true" />
+  </Target>
 
 </Project>

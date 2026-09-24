@@ -20,7 +20,9 @@ jobs:
       - name: Restore
         run: dotnet restore GitHubAutoInstaller.SmokeTests/GitHubAutoInstaller.SmokeTests.csproj
       - name: Verify formatting
-        run: dotnet format GitHubAutoInstaller.SmokeTests/GitHubAutoInstaller.SmokeTests.csproj --no-restore --verify-no-changes
+        run: |
+          dotnet format GitHubAutoInstaller.csproj --no-restore --verify-no-changes
+          dotnet format GitHubAutoInstaller.SmokeTests/GitHubAutoInstaller.SmokeTests.csproj --no-restore --verify-no-changes
       - name: Build
         run: dotnet build GitHubAutoInstaller.SmokeTests/GitHubAutoInstaller.SmokeTests.csproj --no-restore --configuration Release
       - name: Run smoke tests

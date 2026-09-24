@@ -86,6 +86,53 @@ public sealed class GitHubReleaseService
         return new GitHubRelease(tagName, pageUrl, assets);
     }
 
+    public async Task<GitHubRelease?> GetLatestReleaseOrNullAsync(
+        GitHubRepository repository,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await GetLatestReleaseAsync(repository, cancellationToken);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+    }
+
+    public async Task<IReadOnlyList<string>> GetRepositoryRootFilesAsync(
+        GitHubRepository repository,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            using JsonDocument json = await GetJsonAsync(
+                $"https://api.github.com/repos/{repository.Owner}/{repository.Name}/contents",
+                cancellationToken);
+
+            if (json.RootElement.ValueKind != JsonValueKind.Array)
+            {
+                return [];
+            }
+
+            List<string> files = [];
+            foreach (JsonElement item in json.RootElement.EnumerateArray())
+            {
+                if (item.TryGetProperty("name", out JsonElement nameProp) &&
+                    nameProp.GetString() is string fileName)
+                {
+                    files.Add(fileName);
+                }
+            }
+
+            return files;
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase))
+        {
+            return [];
+        }
+    }
+
     private async Task<JsonDocument> GetJsonAsync(string requestUri, CancellationToken cancellationToken)
     {
         using HttpResponseMessage response = await _httpClient.GetAsync(requestUri, cancellationToken);
