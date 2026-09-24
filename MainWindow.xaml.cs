@@ -2,8 +2,8 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
-using System.Security.Cryptography;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using GitHubAutoInstaller.Models;
@@ -13,6 +13,16 @@ namespace GitHubAutoInstaller;
 
 public partial class MainWindow : Window
 {
+    private enum WorkflowState
+    {
+        Idle,
+        Inspecting,
+        PlanReady,
+        Installing,
+        Completed,
+        Failed
+    }
+
     private static readonly HttpClient Http = new()
     {
         Timeout = Timeout.InfiniteTimeSpan
@@ -22,8 +32,19 @@ public partial class MainWindow : Window
     private readonly GitHubReleaseService _githubService;
     private readonly FileDownloadService _downloadService;
     private readonly AssetInstallerService _installerService;
+    private readonly ToolVerificationService _toolVerifier;
+    private readonly InstallationEngine _installationEngine;
+
+    private WorkflowState _state = WorkflowState.Idle;
     private CancellationTokenSource? _operationCancellation;
     private bool _closeAfterCancellation;
+
+    private GitHubRepository? _currentRepository;
+    private RepositoryMetadata? _currentMetadata;
+    private GitHubRelease? _currentRelease;
+    private RepositoryClassification? _currentClassification;
+    private IReadOnlyList<InstallationOption> _availableOptions = [];
+    private InstallationOption? _selectedOption;
 
     public MainWindow()
     {
@@ -41,6 +62,8 @@ public partial class MainWindow : Window
         _githubService = new GitHubReleaseService(Http);
         _downloadService = new FileDownloadService(Http);
         _installerService = new AssetInstallerService(installRoot);
+        _toolVerifier = new ToolVerificationService();
+        _installationEngine = new InstallationEngine(_downloadService, _installerService, _toolVerifier);
     }
 
     protected override void OnClosing(CancelEventArgs e)
@@ -49,8 +72,8 @@ public partial class MainWindow : Window
         {
             e.Cancel = true;
             MessageBoxResult result = MessageBox.Show(
-                "An installation is active. Cancel it and close the application?",
-                "Installation Active",
+                "An operation is active. Cancel it and close the application?",
+                "Operation Active",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Warning);
 
@@ -95,33 +118,237 @@ public partial class MainWindow : Window
         }
     }
 
+    private void UrlBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_state is WorkflowState.PlanReady or WorkflowState.Completed or WorkflowState.Failed)
+        {
+            ResetToIdleState();
+        }
+    }
+
     private async void GoButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_operationCancellation is not null)
+        if (_state == WorkflowState.Installing)
         {
-            _operationCancellation.Cancel();
+            _operationCancellation?.Cancel();
+            return;
+        }
+
+        if (_state == WorkflowState.Completed)
+        {
+            ResetToIdleState();
+            return;
+        }
+
+        if (_state == WorkflowState.PlanReady && _selectedOption is not null)
+        {
+            await ConfirmAndExecutePlanAsync();
+            return;
+        }
+
+        await InspectRepositoryAsync();
+    }
+
+    private async Task InspectRepositoryAsync()
+    {
+        using CancellationTokenSource cancellation = new();
+        _operationCancellation = cancellation;
+        SetBusyState(isBusy: true, statusText: "INSPECTING");
+        LogBox.Clear();
+
+        try
+        {
+            SetStep("Validating GitHub repository URL...", 5);
+            _currentRepository = GitHubRepositoryParser.Parse(UrlBox.Text);
+            Log($"Inspecting repository: {_currentRepository.FullName}");
+
+            SetStep("Loading repository metadata, releases, and manifests...", 15);
+            Task<RepositoryMetadata> metadataTask = _githubService.GetRepositoryAsync(_currentRepository, cancellation.Token);
+            Task<GitHubRelease?> releaseTask = _githubService.GetLatestReleaseOrNullAsync(_currentRepository, cancellation.Token);
+            Task<IReadOnlyList<string>> rootFilesTask = _githubService.GetRepositoryRootFilesAsync(_currentRepository, cancellation.Token);
+
+            await Task.WhenAll(metadataTask, releaseTask, rootFilesTask);
+
+            _currentMetadata = await metadataTask;
+            _currentRelease = await releaseTask;
+            IReadOnlyList<string> rootFiles = await rootFilesTask;
+
+            SetStep("Classifying ecosystem and Windows compatibility...", 25);
+            _currentClassification = RepositoryInspectorService.Classify(
+                _currentRepository,
+                _currentRelease,
+                rootFiles);
+
+            UpdateRepositoryCard(_currentMetadata, _currentRelease, _currentClassification);
+
+            SetStep("Evaluating dependencies and generating installation plans...", 35);
+            string version = _currentRelease?.TagName ?? "latest";
+            _availableOptions = await InstallationPlanService.GenerateOptionsAsync(
+                _currentRepository,
+                version,
+                _currentRelease,
+                rootFiles,
+                _toolVerifier,
+                cancellation.Token);
+
+            PopulateMethods(_availableOptions);
+
+            _selectedOption = _availableOptions.FirstOrDefault(opt => opt.IsRecommended)
+                ?? _availableOptions.FirstOrDefault();
+
+            if (_selectedOption is not null)
+            {
+                DisplayPlanDetails(_selectedOption.Plan);
+            }
+
+            if (_selectedOption is not null && _selectedOption.Plan.CanExecuteAutomatically)
+            {
+                _state = WorkflowState.PlanReady;
+                SetStep("Plan ready. Review details and click Confirm & Install.", 40);
+                UpdateStatus("PLAN READY", 40);
+                GoButton.Content = "Confirm & Install";
+            }
+            else
+            {
+                _state = WorkflowState.Idle;
+                string reason = _selectedOption?.Plan.BlockedReason
+                    ?? _currentClassification.UnsupportedReason
+                    ?? "Automated installation is not available for this repository.";
+                SetStep("Inspection complete: " + reason, 40);
+                UpdateStatus("MANUAL REQUIRED", 40);
+                GoButton.Content = "Inspect Repository";
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            SetStep("Inspection cancelled.", 0);
+            UpdateStatus("CANCELLED", 0);
+        }
+        catch (Exception exception)
+        {
+            SetStep("Inspection failed: " + exception.Message, 0);
+            UpdateStatus("ERROR", 0);
+            Log("ERROR: " + exception.Message);
+            MessageBox.Show(
+                exception.Message,
+                "Inspection Failed",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+        finally
+        {
+            _operationCancellation = null;
+            SetBusyState(isBusy: false, statusText: null);
+        }
+    }
+
+    private async Task ConfirmAndExecutePlanAsync()
+    {
+        if (_selectedOption is null) return;
+        InstallationPlan plan = _selectedOption.Plan;
+
+        // Explicit User Confirmation Boundary
+        string warningDetail = plan.SecurityWarnings.Count > 0
+            ? "\n\nSecurity Warnings:\n- " + string.Join("\n- ", plan.SecurityWarnings)
+            : string.Empty;
+
+        string proposedCommandsDetail = plan.ProposedCommands.Count > 0
+            ? "\n\nProposed Command(s):\n" + string.Join("\n", plan.ProposedCommands.Select(c => c.DisplayCommand))
+            : string.Empty;
+
+        string confirmationMessage =
+            $"Authorize installation of {plan.Repository.FullName} ({plan.Version})?\n\n" +
+            $"Method: {plan.DisplayTitle}\n" +
+            $"Permissions: {plan.RequiredPermissions}\n" +
+            $"Destination: {plan.InstallationDestination}" +
+            proposedCommandsDetail +
+            warningDetail +
+            "\n\nDo you want to proceed with this installation plan?";
+
+        MessageBoxResult confirmation = MessageBox.Show(
+            confirmationMessage,
+            "Confirm Installation Plan",
+            MessageBoxButton.YesNo,
+            plan.ExecutesPublisherCode ? MessageBoxImage.Warning : MessageBoxImage.Question,
+            MessageBoxResult.No);
+
+        if (confirmation != MessageBoxResult.Yes)
+        {
+            Log("Installation cancelled by user before download or execution.");
+            SetStep("Installation cancelled by user.", 40);
+            UpdateStatus("CANCELLED", 40);
             return;
         }
 
         using CancellationTokenSource cancellation = new();
         _operationCancellation = cancellation;
-        SetBusyState(isBusy: true);
-        LogBox.Clear();
+        _state = WorkflowState.Installing;
+        SetBusyState(isBusy: true, statusText: "INSTALLING");
+        GoButton.Content = "Cancel";
 
         try
         {
-            await RunInstallerAsync(cancellation.Token);
+            SetStep("Starting installation workflow...", 45);
+
+            Progress<double> progress = new(value =>
+            {
+                int percentage = 50 + (int)Math.Round(value * 25);
+                SetStep($"Downloading asset... {(int)Math.Round(value * 100)}%", percentage, writeLog: false);
+            });
+
+            SetStep("Downloading and verifying integrity...", 50);
+            InstallationResult result = await _installationEngine.ExecutePlanAsync(
+                plan,
+                _downloadDirectory,
+                SilentCheck.IsChecked == true,
+                progress,
+                Log,
+                cancellation.Token);
+
+            SetStep("Verifying installation result...", 85);
+            if (result.ExitCode is 1_641 or 3_010)
+            {
+                Log("Installer completed successfully; Windows restart is required.");
+            }
+
+            if (ShortcutCheck.IsChecked == true && result.InstalledDirectory is not null)
+            {
+                string? shortcut = DesktopShortcutService.CreateForBestExecutable(
+                    result.InstalledDirectory,
+                    plan.Repository.Name);
+                Log(shortcut is null
+                    ? "No suitable executable was found for a desktop shortcut."
+                    : "Desktop shortcut created: " + shortcut);
+            }
+
+            SetStep("Installation completed successfully.", 100);
+            UpdateStatus("COMPLETE", 100);
+            _state = WorkflowState.Completed;
+            GoButton.Content = "Inspect Another";
+
+            if (NotifyCheck.IsChecked == true)
+            {
+                MessageBox.Show(
+                    $"{plan.Repository.Name} installed and verified successfully.",
+                    "Installation Complete",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+            }
         }
         catch (OperationCanceledException)
         {
-            SetStep("Cancelled.", 0);
+            SetStep("Installation cancelled.", 0);
+            UpdateStatus("CANCELLED", 0);
+            _state = WorkflowState.Idle;
+            GoButton.Content = "Inspect Repository";
         }
         catch (Exception exception)
         {
-            SetStep("Failed.", 0);
+            SetStep("Installation failed: " + exception.Message, 0);
+            UpdateStatus("ERROR", 0);
             Log("ERROR: " + exception.Message);
-            _operationCancellation = null;
-            SetBusyState(isBusy: false);
+            _state = WorkflowState.Failed;
+            GoButton.Content = "Inspect Repository";
             MessageBox.Show(
                 exception.Message,
                 "Installation Failed",
@@ -131,7 +358,7 @@ public partial class MainWindow : Window
         finally
         {
             _operationCancellation = null;
-            SetBusyState(isBusy: false);
+            SetBusyState(isBusy: false, statusText: null);
 
             if (_closeAfterCancellation)
             {
@@ -140,132 +367,106 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task RunInstallerAsync(CancellationToken cancellationToken)
+    private void PopulateMethods(IReadOnlyList<InstallationOption> options)
     {
-        SetStep("Validating GitHub URL...", 5);
-        GitHubRepository repository = GitHubRepositoryParser.Parse(UrlBox.Text);
-        Log($"Repository detected: {repository.FullName}");
-
-        SetStep("Loading repository and latest release...", 20);
-        Task<RepositoryMetadata> metadataTask = _githubService.GetRepositoryAsync(
-            repository,
-            cancellationToken);
-        Task<GitHubRelease> releaseTask = _githubService.GetLatestReleaseAsync(
-            repository,
-            cancellationToken);
-        await Task.WhenAll(metadataTask, releaseTask);
-
-        RepositoryMetadata metadata = await metadataTask;
-        GitHubRelease release = await releaseTask;
-        ReleaseAsset asset;
-        try
+        MethodComboBox.Items.Clear();
+        foreach (InstallationOption opt in options)
         {
-            asset = ReleaseAssetSelector.SelectBestWindowsX64Asset(release.Assets);
-        }
-        catch (InvalidOperationException exception)
-        {
-            UpdateRepositoryCard(metadata, release, asset: null);
-            Log($"Latest release: {release.TagName}");
-            Log(release.Assets.Count == 0
-                ? "Release assets: none uploaded."
-                : "Release assets: " + string.Join(", ", release.Assets.Select(item => item.Name)));
-            Log("Release page: " + release.PageUrl);
-            throw new InvalidOperationException(
-                $"{exception.Message}\n\nRelease: {release.TagName}\n{release.PageUrl}\n\nThis repository may require a package manager or installation instructions from its documentation.",
-                exception);
+            string label = opt.IsRecommended
+                ? $"{opt.Title} (Recommended)"
+                : opt.Title;
+            MethodComboBox.Items.Add(new ComboBoxItem { Content = label, Tag = opt });
         }
 
-        UpdateRepositoryCard(metadata, release, asset);
-
-        Log($"Latest release: {release.TagName}");
-        Log($"Selected asset: {asset.Name} ({FormatBytes(asset.Size)})");
-        SetStep("Asset inspected. Waiting for confirmation...", 40);
-
-        bool isPowerShellAsset = Path.GetExtension(asset.Name)
-            .Equals(".ps1", StringComparison.OrdinalIgnoreCase);
-        string confirmationMessage = isPowerShellAsset
-            ? $"Run the PowerShell asset {asset.Name}?\n\nRelease: {release.TagName}\nSize: {FormatBytes(asset.Size)}\n\nPowerShell scripts can modify Windows settings. Continue only if you trust {repository.FullName}."
-            : $"Install {asset.Name}?\n\nRelease: {release.TagName}\nSize: {FormatBytes(asset.Size)}";
-
-        MessageBoxResult confirmation = MessageBox.Show(
-            confirmationMessage,
-            isPowerShellAsset ? "Confirm PowerShell Script" : "Confirm Installation",
-            MessageBoxButton.YesNo,
-            isPowerShellAsset ? MessageBoxImage.Warning : MessageBoxImage.Question,
-            MessageBoxResult.No);
-
-        if (confirmation != MessageBoxResult.Yes)
+        if (MethodComboBox.Items.Count > 0)
         {
-            throw new OperationCanceledException("Installation was cancelled before download.");
+            MethodComboBox.SelectedIndex = 0;
+            PlanSection.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            PlanSection.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private void MethodComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (MethodComboBox.SelectedItem is ComboBoxItem item && item.Tag is InstallationOption option)
+        {
+            _selectedOption = option;
+            DisplayPlanDetails(option.Plan);
+
+            if (_state == WorkflowState.PlanReady)
+            {
+                GoButton.IsEnabled = option.Plan.CanExecuteAutomatically;
+                GoButton.Content = option.Plan.CanExecuteAutomatically ? "Confirm & Install" : "Inspect Repository";
+            }
+        }
+    }
+
+    private void DisplayPlanDetails(InstallationPlan plan)
+    {
+        PlanTitle.Text = plan.DisplayTitle;
+        PlanSummary.Text = plan.Summary;
+        PermissionsText.Text = plan.RequiredPermissions == RequiredPermissionLevel.RequiresExplicitElevation
+            ? "Requires Elevation"
+            : "Standard User";
+
+        string commands = plan.ProposedCommands.Count > 0
+            ? string.Join("\r\n", plan.ProposedCommands.Select(c => c.DisplayCommand))
+            : "None";
+        ProposedCommandBox.Text = commands;
+
+        string tools = plan.RequiredTools.Count > 0
+            ? string.Join(", ", plan.RequiredTools.Select(t => $"{t.ToolName} ({(t.IsInstalled ? "Installed" : "Missing")})"))
+            : "None required";
+        PlanToolsText.Text = tools;
+
+        PlanVerificationText.Text = plan.VerificationMethod.Description;
+        PlanDestinationText.Text = plan.InstallationDestination ?? "Managed by installer";
+
+        if (plan.SecurityWarnings.Count > 0)
+        {
+            WarningBanner.Visibility = Visibility.Visible;
+            WarningText.Text = "SECURITY NOTE:\n" + string.Join("\n", plan.SecurityWarnings);
+        }
+        else
+        {
+            WarningBanner.Visibility = Visibility.Collapsed;
         }
 
-        SetStep("Downloading asset...", 50);
-
-        Progress<double> downloadProgress = new(value =>
+        if (!plan.CanExecuteAutomatically && !string.IsNullOrWhiteSpace(plan.BlockedReason))
         {
-            int percentage = 50 + (int)Math.Round(value * 20);
-            SetStep($"Downloading asset... {(int)Math.Round(value * 100)}%", percentage, writeLog: false);
-        });
-
-        string downloadPath = await _downloadService.DownloadAsync(
-            asset,
-            _downloadDirectory,
-            downloadProgress,
-            cancellationToken);
-        Log("Downloaded: " + downloadPath);
-        Log("SHA-256: " + await ComputeSha256Async(downloadPath, cancellationToken));
-
-        SetStep("Installing or extracting...", 75);
-        InstallationResult result = await _installerService.InstallAsync(
-            downloadPath,
-            repository.Name,
-            SilentCheck.IsChecked == true,
-            Log,
-            cancellationToken);
-
-        if (result.ExitCode is 1_641 or 3_010)
-        {
-            Log("Installer completed successfully; Windows restart is required.");
+            UnsupportedBanner.Visibility = Visibility.Visible;
+            UnsupportedText.Text = "ACTION REQUIRED:\n" + plan.BlockedReason;
         }
-
-        SetStep("Finalizing...", 90);
-        if (ShortcutCheck.IsChecked == true && result.InstalledDirectory is not null)
+        else
         {
-            string? shortcut = DesktopShortcutService.CreateForBestExecutable(
-                result.InstalledDirectory,
-                repository.Name);
-            Log(shortcut is null
-                ? "No suitable executable was found for a desktop shortcut."
-                : "Desktop shortcut created: " + shortcut);
-        }
-        else if (ShortcutCheck.IsChecked == true)
-        {
-            Log("Package installer controls desktop shortcut creation.");
-        }
-
-        SetStep("Completed successfully.", 100);
-        if (NotifyCheck.IsChecked == true)
-        {
-            _operationCancellation = null;
-            SetBusyState(isBusy: false);
-            MessageBox.Show(
-                $"{repository.Name} installed successfully.",
-                "Completed",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
+            UnsupportedBanner.Visibility = Visibility.Collapsed;
         }
     }
 
     private void UpdateRepositoryCard(
         RepositoryMetadata metadata,
-        GitHubRelease release,
-        ReleaseAsset? asset)
+        GitHubRelease? release,
+        RepositoryClassification classification)
     {
         RepoTitle.Text = metadata.FullName;
         RepoDescription.Text = metadata.Description;
-        RepoVersion.Text = release.TagName;
+        RepoVersion.Text = release?.TagName ?? "Source Only";
         RepoStars.Text = metadata.Stars.ToString("N0");
-        RepoAsset.Text = asset?.Name ?? "No compatible asset";
+
+        ReleaseAsset? bestAsset = null;
+        if (release is not null && release.Assets.Count > 0)
+        {
+            try { bestAsset = ReleaseAssetSelector.SelectBestWindowsX64Asset(release.Assets); }
+            catch { }
+        }
+
+        RepoAsset.Text = bestAsset?.Name ?? (release is not null ? "No compatible asset" : "No release published");
+
+        CategoryBadge.Visibility = Visibility.Visible;
+        CategoryText.Text = classification.CategoryDescription;
 
         if (metadata.AvatarUrl is not null)
         {
@@ -273,14 +474,30 @@ public partial class MainWindow : Window
         }
     }
 
-    private void SetBusyState(bool isBusy)
+    private void ResetToIdleState()
+    {
+        _state = WorkflowState.Idle;
+        PlanSection.Visibility = Visibility.Collapsed;
+        CategoryBadge.Visibility = Visibility.Collapsed;
+        GoButton.Content = "Inspect Repository";
+        GoButton.IsEnabled = true;
+        SetStep("Ready for repository URL.", 0, writeLog: false);
+        UpdateStatus("READY", 0);
+    }
+
+    private void SetBusyState(bool isBusy, string? statusText)
     {
         PasteButton.IsEnabled = !isBusy;
         UrlBox.IsEnabled = !isBusy;
         SilentCheck.IsEnabled = !isBusy;
         ShortcutCheck.IsEnabled = !isBusy;
         NotifyCheck.IsEnabled = !isBusy;
-        GoButton.Content = isBusy ? "Cancel" : "Inspect & Install";
+        MethodComboBox.IsEnabled = !isBusy;
+
+        if (statusText is not null)
+        {
+            StatusText.Text = statusText;
+        }
     }
 
     private void SetStep(string text, int percent, bool writeLog = true)
@@ -288,7 +505,6 @@ public partial class MainWindow : Window
         StepText.Text = text;
         ProgressBar.Value = percent;
         PercentText.Text = percent + "%";
-        UpdateStatus(text, percent);
 
         if (writeLog)
         {
@@ -319,39 +535,38 @@ public partial class MainWindow : Window
         LogBox.Clear();
     }
 
-    private void UpdateStatus(string step, int percent)
+    private void UpdateStatus(string status, int percent)
     {
-        string status;
         string brushKey;
         Color dotColor;
 
-        if (step.StartsWith("Failed", StringComparison.OrdinalIgnoreCase))
+        if (status.StartsWith("ERROR", StringComparison.OrdinalIgnoreCase))
         {
-            status = "ERROR";
             brushKey = "StatusErrorBrush";
             dotColor = Color.FromRgb(254, 202, 202);
         }
-        else if (step.StartsWith("Cancelled", StringComparison.OrdinalIgnoreCase))
+        else if (status.StartsWith("CANCELLED", StringComparison.OrdinalIgnoreCase))
         {
-            status = "CANCELLED";
             brushKey = "StatusWarningBrush";
             dotColor = Color.FromRgb(254, 240, 138);
         }
-        else if (percent >= 100)
+        else if (status.StartsWith("MANUAL", StringComparison.OrdinalIgnoreCase))
         {
-            status = "COMPLETE";
+            brushKey = "StatusWarningBrush";
+            dotColor = Color.FromRgb(254, 240, 138);
+        }
+        else if (percent >= 100 || status.StartsWith("COMPLETE", StringComparison.OrdinalIgnoreCase))
+        {
             brushKey = "StatusSuccessBrush";
             dotColor = Color.FromRgb(167, 243, 208);
         }
-        else if (percent > 0)
+        else if (percent > 0 || status.StartsWith("PLAN", StringComparison.OrdinalIgnoreCase))
         {
-            status = "WORKING";
             brushKey = "StatusWorkingBrush";
             dotColor = Color.FromRgb(191, 219, 254);
         }
         else
         {
-            status = "READY";
             brushKey = "StatusReadyBrush";
             dotColor = Color.FromRgb(203, 213, 225);
         }
@@ -368,39 +583,5 @@ public partial class MainWindow : Window
             LogBox.AppendText($"[{DateTime.Now:HH:mm:ss}] {text}\r\n");
             LogBox.ScrollToEnd();
         });
-    }
-
-    private static string FormatBytes(long bytes)
-    {
-        if (bytes <= 0)
-        {
-            return "unknown size";
-        }
-
-        string[] units = ["B", "KB", "MB", "GB"];
-        double value = bytes;
-        int unit = 0;
-        while (value >= 1_024 && unit < units.Length - 1)
-        {
-            value /= 1_024;
-            unit++;
-        }
-
-        return $"{value:0.##} {units[unit]}";
-    }
-
-    private static async Task<string> ComputeSha256Async(
-        string filePath,
-        CancellationToken cancellationToken)
-    {
-        await using FileStream stream = new(
-            filePath,
-            FileMode.Open,
-            FileAccess.Read,
-            FileShare.Read,
-            bufferSize: 81_920,
-            useAsync: true);
-        byte[] hash = await SHA256.HashDataAsync(stream, cancellationToken);
-        return Convert.ToHexString(hash);
     }
 }
