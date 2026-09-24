@@ -2,6 +2,10 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using GitHubAutoInstaller.Models;
+using SharpCompress.Archives;
+using SharpCompress.Archives.SevenZip;
+using SharpCompress.Common;
+using SharpCompress.Readers;
 
 namespace GitHubAutoInstaller.Services;
 
@@ -45,6 +49,11 @@ public sealed class AssetInstallerService
             ".zip" => new InstallationResult(
                 await Task.Run(
                     () => ExtractZipAtomically(filePath, repositoryName, cancellationToken),
+                    cancellationToken),
+                0),
+            ".7z" => new InstallationResult(
+                await Task.Run(
+                    () => Extract7zAtomically(filePath, repositoryName, cancellationToken),
                     cancellationToken),
                 0),
             ".ps1" => new InstallationResult(
@@ -213,6 +222,107 @@ public sealed class AssetInstallerService
                 catch (IOException)
                 {
                     // The installed target is valid. A locked backup can be removed on a later run.
+                }
+            }
+
+            return target;
+        }
+        catch
+        {
+            if (Directory.Exists(temporary))
+            {
+                Directory.Delete(temporary, recursive: true);
+            }
+
+            if (!Directory.Exists(target) && Directory.Exists(backup))
+            {
+                Directory.Move(backup, target);
+            }
+
+            throw;
+        }
+    }
+
+    private string Extract7zAtomically(
+        string filePath,
+        string repositoryName,
+        CancellationToken cancellationToken)
+    {
+        string safeRepositoryName = new(repositoryName
+            .Where(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_' or '.')
+            .ToArray());
+
+        if (string.IsNullOrWhiteSpace(safeRepositoryName))
+        {
+            throw new InvalidOperationException("Repository name cannot be used as an install directory.");
+        }
+
+        string target = Path.Combine(_installRoot, safeRepositoryName);
+        string temporary = target + ".new-" + Guid.NewGuid().ToString("N");
+        string backup = target + ".backup-" + Guid.NewGuid().ToString("N");
+
+        Directory.CreateDirectory(temporary);
+
+        try
+        {
+            using IArchive archive = SevenZipArchive.OpenArchive(filePath, new ReaderOptions());
+            int entryCount = 0;
+            long extractedBytes = 0;
+
+            foreach (var entry in archive.Entries)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                entryCount++;
+                if (entryCount > MaximumZipEntries)
+                {
+                    throw new InvalidOperationException("The 7z asset contains too many entries.");
+                }
+
+                if (string.IsNullOrWhiteSpace(entry.Key))
+                {
+                    continue;
+                }
+
+                extractedBytes = checked(extractedBytes + entry.Size);
+                if (extractedBytes > MaximumExtractedBytes)
+                {
+                    throw new InvalidOperationException("The 7z asset expands beyond the 4 GB safety limit.");
+                }
+
+                ValidateZipEntryName(entry.Key);
+
+                string destination = Path.GetFullPath(Path.Combine(temporary, entry.Key));
+                string extractionRoot = Path.GetFullPath(temporary) + Path.DirectorySeparatorChar;
+                if (!destination.StartsWith(extractionRoot, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException("The 7z asset contains an unsafe file path.");
+                }
+
+                if (entry.IsDirectory)
+                {
+                    Directory.CreateDirectory(destination);
+                    continue;
+                }
+
+                Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+                entry.WriteToFile(destination, new ExtractionOptions { Overwrite = true });
+            }
+
+            if (Directory.Exists(target))
+            {
+                Directory.Move(target, backup);
+            }
+
+            Directory.Move(temporary, target);
+
+            if (Directory.Exists(backup))
+            {
+                try
+                {
+                    Directory.Delete(backup, recursive: true);
+                }
+                catch (IOException)
+                {
                 }
             }
 
