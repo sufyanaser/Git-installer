@@ -54,6 +54,16 @@ AssertThrows<InvalidOperationException>(
     () => ReleaseAssetSelector.SelectBestWindowsX64Asset([Asset("package.whl", 100)]),
     "A package-manager artifact must not be treated as a Windows installer.");
 
+InstallationPlan executablePlan = InstallationPlanService.ForReleaseAsset(Asset("app.exe", 100));
+Assert(executablePlan.ExecutesPublisherCode, "Executable installation must be marked as code execution.");
+InstallationPlan zipPlan = InstallationPlanService.ForReleaseAsset(Asset("portable.zip", 100));
+Assert(!zipPlan.ExecutesPublisherCode, "ZIP extraction must not be labeled as direct code execution.");
+IReadOnlyList<RepositoryInstallOption> detected = InstallationPlanService.DetectFromRootFiles(
+    ["package.json", "pyproject.toml", "Cargo.toml", "app.csproj", "README.md"]);
+Assert(detected.Count == 4, "Repository manifest detection failed.");
+Assert(InstallationPlanService.DetectFromRootFiles(["docs/package.json"]).Count == 0,
+    "Nested manifests must not be mistaken for root manifests.");
+
 string testRoot = Path.Combine(
     Path.GetTempPath(),
     "GitHubAutoInstallerSmokeTests",
