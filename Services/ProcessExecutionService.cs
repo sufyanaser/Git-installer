@@ -25,9 +25,19 @@ public static class ProcessExecutionService
             ? new HashSet<int>(acceptableExitCodes)
             : [0];
 
+        string resolvedExecutable = executable;
+        if (!File.Exists(resolvedExecutable))
+        {
+            string? foundInPath = ToolVerificationService.FindExecutableInPath(resolvedExecutable);
+            if (!string.IsNullOrWhiteSpace(foundInPath) && File.Exists(foundInPath))
+            {
+                resolvedExecutable = foundInPath;
+            }
+        }
+
         ProcessStartInfo startInfo = new()
         {
-            FileName = executable,
+            FileName = resolvedExecutable,
             WorkingDirectory = string.IsNullOrWhiteSpace(workingDirectory) ? Environment.CurrentDirectory : workingDirectory,
             UseShellExecute = false,
             RedirectStandardOutput = true,

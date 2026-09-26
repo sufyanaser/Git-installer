@@ -16,7 +16,7 @@ public static class GitHubRepositoryParser
         string[] segments = uri.AbsolutePath
             .Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-        if (segments.Length != 2)
+        if (segments.Length < 2)
         {
             throw new ArgumentException(
                 "Repository URL must be in the form https://github.com/owner/repository.",
@@ -28,6 +28,13 @@ public static class GitHubRepositoryParser
             ? segments[1][..^4]
             : segments[1];
 
+        if (segments.Length > 2 && !IsSupportedSubpath(segments[2]))
+        {
+            throw new ArgumentException(
+                "Repository URL must be in the form https://github.com/owner/repository.",
+                nameof(value));
+        }
+
         if (!IsValidOwner(owner) || !IsValidRepository(repository))
         {
             throw new ArgumentException("The GitHub owner or repository name is invalid.", nameof(value));
@@ -35,6 +42,17 @@ public static class GitHubRepositoryParser
 
         return new GitHubRepository(owner, repository);
     }
+
+    private static bool IsSupportedSubpath(string segment) =>
+        segment.Equals("releases", StringComparison.OrdinalIgnoreCase) ||
+        segment.Equals("tree", StringComparison.OrdinalIgnoreCase) ||
+        segment.Equals("blob", StringComparison.OrdinalIgnoreCase) ||
+        segment.Equals("tags", StringComparison.OrdinalIgnoreCase) ||
+        segment.Equals("commits", StringComparison.OrdinalIgnoreCase) ||
+        segment.Equals("commit", StringComparison.OrdinalIgnoreCase) ||
+        segment.Equals("actions", StringComparison.OrdinalIgnoreCase) ||
+        segment.Equals("issues", StringComparison.OrdinalIgnoreCase) ||
+        segment.Equals("pulls", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsValidOwner(string value) =>
         value.Length is > 0 and <= 39 &&

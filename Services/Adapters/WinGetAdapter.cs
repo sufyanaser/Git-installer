@@ -62,7 +62,9 @@ public sealed class WinGetAdapter : IInstallationAdapter
             args,
             null,
             log,
-            cancellationToken);
+            cancellationToken,
+            requireZeroExitCode: true,
+            acceptableExitCodes: [0, 1641, 3010]);
 
         return new InstallationResult(null, exitCode);
     }

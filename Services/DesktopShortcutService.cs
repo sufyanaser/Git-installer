@@ -8,8 +8,14 @@ public static class DesktopShortcutService
 {
     public static string? CreateForBestExecutable(string installDirectory, string repositoryName)
     {
+        EnumerationOptions options = new()
+        {
+            RecurseSubdirectories = true,
+            IgnoreInaccessible = true
+        };
+
         string? executable = Directory
-            .EnumerateFiles(installDirectory, "*.exe", SearchOption.AllDirectories)
+            .EnumerateFiles(installDirectory, "*.exe", options)
             .Where(path => !ContainsExcludedExecutableName(path))
             .OrderByDescending(ScoreExecutable)
             .FirstOrDefault();
@@ -20,7 +26,20 @@ public static class DesktopShortcutService
         }
 
         string desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
-        string shortcutPath = Path.Combine(desktop, repositoryName + ".lnk");
+        if (string.IsNullOrWhiteSpace(desktop))
+        {
+            return null;
+        }
+
+        Directory.CreateDirectory(desktop);
+
+        string sanitizedRepo = string.Concat(repositoryName.Split(Path.GetInvalidFileNameChars()));
+        if (string.IsNullOrWhiteSpace(sanitizedRepo))
+        {
+            sanitizedRepo = "Application";
+        }
+
+        string shortcutPath = Path.Combine(desktop, sanitizedRepo + ".lnk");
 
         Type shellType = Type.GetTypeFromProgID("WScript.Shell")
             ?? throw new InvalidOperationException("Windows Script Host is unavailable.");
@@ -65,13 +84,20 @@ public static class DesktopShortcutService
 
     private static int ScoreExecutable(string path)
     {
-        FileVersionInfo version = FileVersionInfo.GetVersionInfo(path);
-        int score = 0;
+        try
+        {
+            FileVersionInfo version = FileVersionInfo.GetVersionInfo(path);
+            int score = 0;
 
-        if (!string.IsNullOrWhiteSpace(version.ProductName)) score += 100;
-        if (!string.IsNullOrWhiteSpace(version.FileDescription)) score += 50;
-        score += (int)Math.Min(new FileInfo(path).Length / 1_048_576, 50);
+            if (!string.IsNullOrWhiteSpace(version.ProductName)) score += 100;
+            if (!string.IsNullOrWhiteSpace(version.FileDescription)) score += 50;
+            score += (int)Math.Min(new FileInfo(path).Length / 1_048_576, 50);
 
-        return score;
+            return score;
+        }
+        catch
+        {
+            return 0;
+        }
     }
 }

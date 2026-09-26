@@ -10,7 +10,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <Product>GitHub Auto Installer</Product>
     <Description>Repository-Aware Windows installer and deployment utility for GitHub repositories.</Description>
-    <Version>1.2.0</Version>
+    <Version>1.2.1</Version>
     <Authors>NAS</Authors>
   </PropertyGroup>
 

@@ -31,6 +31,19 @@ AssertThrows<ArgumentException>(
     () => GitHubRepositoryParser.Parse("https://github.com/invalid-owner-/repo"),
     "Invalid owner format must be rejected.");
 
+GitHubRepository releaseSubpathRepo = GitHubRepositoryParser.Parse("https://github.com/sufyanaser/Git-installer/releases");
+Assert(releaseSubpathRepo.Owner == "sufyanaser" && releaseSubpathRepo.Name == "Git-installer", "URL with /releases subpath parsing failed.");
+
+GitHubRepository latestReleaseRepo = GitHubRepositoryParser.Parse("https://github.com/sufyanaser/Git-installer/releases/latest");
+Assert(latestReleaseRepo.Owner == "sufyanaser" && latestReleaseRepo.Name == "Git-installer", "URL with /releases/latest subpath parsing failed.");
+
+GitHubRepository treeBranchRepo = GitHubRepositoryParser.Parse("https://github.com/sufyanaser/Git-installer/tree/develop");
+Assert(treeBranchRepo.Owner == "sufyanaser" && treeBranchRepo.Name == "Git-installer", "URL with /tree/develop subpath parsing failed.");
+
+AssertThrows<ArgumentException>(
+    () => GitHubRepositoryParser.Parse("https://github.com/sufyanaser/Git-installer/unsupported-subpath"),
+    "Unsupported subpath on repository URL must be rejected.");
+
 // ============================================================================
 // 2. Windows x64 Asset Scoring and Architecture Filtering
 // ============================================================================
@@ -276,6 +289,22 @@ InstallationPlan pipInjection = new()
 AssertThrows<InvalidOperationException>(
     () => pipAdapter.ExecuteAsync(pipInjection, null, false, _ => { }, CancellationToken.None).GetAwaiter().GetResult(),
     "pip package names starting with flags must be rejected.");
+
+// Test DesktopShortcutService safe handling with special characters and empty folders
+string shortcutTestDir = Path.Combine(Path.GetTempPath(), "shortcut-test-" + Guid.NewGuid().ToString("N"));
+try
+{
+    Directory.CreateDirectory(shortcutTestDir);
+    string? shortcut = DesktopShortcutService.CreateForBestExecutable(shortcutTestDir, "special:name?with*chars");
+    Assert(shortcut is null, "Empty directory should yield no shortcut.");
+}
+finally
+{
+    if (Directory.Exists(shortcutTestDir))
+    {
+        Directory.Delete(shortcutTestDir, recursive: true);
+    }
+}
 
 // ============================================================================
 // 10. Integrity Verification and Authenticode Inspection

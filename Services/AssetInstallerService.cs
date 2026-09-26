@@ -128,7 +128,14 @@ public sealed class AssetInstallerService
         {
             if (!process.HasExited)
             {
-                process.Kill(entireProcessTree: true);
+                try
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+                catch
+                {
+                    // Ignore errors during termination
+                }
             }
 
             throw;

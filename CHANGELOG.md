@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.2.1 - 2026-09-27
+
+- Support GitHub repository URLs with subpaths (e.g. `/releases`, `/releases/latest`, `/tree/...`, `/tags`).
+- Add GitHub API authorization token support via `GITHUB_TOKEN` and `GH_TOKEN` environment variables for 5,000 req/hr limits.
+- Gracefully handle releases without binary assets, preventing unhandled exceptions and allowing package-manager fallback options.
+- Support Windows reboot exit codes (1641 and 3010) in WinGet adapter without false-positive failures.
+- Resolve external executables against system and user PATH before execution in `ProcessExecutionService`.
+- Harden `DesktopShortcutService` with robust `EnumerationOptions`, filename sanitization, and exception guards.
+- Safely handle process tree termination during operation cancellation in `AssetInstallerService`.
+- Improve keyboard accessibility by supporting the Enter key in the repository URL input field.
+- Package all required dependencies, satellite assemblies, and runtime assets in Inno Setup installer.
+
 ## 1.2.0 - 2026-09-24
 
 - Add repository-aware inspection for GitHub releases, WinGet manifests, Python, Node.js, Rust, .NET, Docker, and root installation scripts.

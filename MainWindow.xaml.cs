@@ -126,6 +126,15 @@ public partial class MainWindow : Window
         }
     }
 
+    private void UrlBox_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == System.Windows.Input.Key.Enter && GoButton.IsEnabled)
+        {
+            e.Handled = true;
+            GoButton_Click(GoButton, new RoutedEventArgs());
+        }
+    }
+
     private async void GoButton_Click(object sender, RoutedEventArgs e)
     {
         if (_state == WorkflowState.Installing)
@@ -396,10 +405,25 @@ public partial class MainWindow : Window
             _selectedOption = option;
             DisplayPlanDetails(option.Plan);
 
-            if (_state == WorkflowState.PlanReady)
+            if (_state is WorkflowState.PlanReady or WorkflowState.Idle)
             {
-                GoButton.IsEnabled = option.Plan.CanExecuteAutomatically;
-                GoButton.Content = option.Plan.CanExecuteAutomatically ? "Confirm & Install" : "Inspect Repository";
+                if (option.Plan.CanExecuteAutomatically)
+                {
+                    _state = WorkflowState.PlanReady;
+                    GoButton.IsEnabled = true;
+                    GoButton.Content = "Confirm & Install";
+                    SetStep("Plan ready. Review details and click Confirm & Install.", 40);
+                    UpdateStatus("PLAN READY", 40);
+                }
+                else
+                {
+                    _state = WorkflowState.Idle;
+                    GoButton.IsEnabled = false;
+                    GoButton.Content = "Inspect Repository";
+                    string reason = option.Plan.BlockedReason ?? "Automated execution is guarded or unsupported for this installation plan.";
+                    SetStep("Selected method: " + reason, 40);
+                    UpdateStatus("MANUAL REQUIRED", 40);
+                }
             }
         }
     }

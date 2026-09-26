@@ -23,6 +23,14 @@ public sealed class GitHubReleaseService
 
         _httpClient.DefaultRequestHeaders.Accept.Add(
             new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
+
+        string? token = Environment.GetEnvironmentVariable("GITHUB_TOKEN") ??
+                        Environment.GetEnvironmentVariable("GH_TOKEN");
+        if (!string.IsNullOrWhiteSpace(token) && _httpClient.DefaultRequestHeaders.Authorization is null)
+        {
+            _httpClient.DefaultRequestHeaders.Authorization =
+                new AuthenticationHeaderValue("Bearer", token);
+        }
     }
 
     public async Task<RepositoryMetadata> GetRepositoryAsync(
@@ -35,9 +43,12 @@ public sealed class GitHubReleaseService
 
         JsonElement root = json.RootElement;
         string fullName = GetRequiredString(root, "full_name");
-        string description = root.TryGetProperty("description", out JsonElement descriptionElement)
-            ? descriptionElement.GetString() ?? "No description provided."
-            : "No description provided.";
+        string rawDescription = root.TryGetProperty("description", out JsonElement descriptionElement)
+            ? descriptionElement.GetString() ?? string.Empty
+            : string.Empty;
+        string description = string.IsNullOrWhiteSpace(rawDescription)
+            ? "No description provided."
+            : rawDescription;
         int stars = root.TryGetProperty("stargazers_count", out JsonElement starsElement)
             ? starsElement.GetInt32()
             : 0;
@@ -65,22 +76,26 @@ public sealed class GitHubReleaseService
         string tagName = GetRequiredString(root, "tag_name");
         Uri pageUrl = new(GetRequiredString(root, "html_url"));
 
-        if (!root.TryGetProperty("assets", out JsonElement assetsElement) ||
-            assetsElement.ValueKind != JsonValueKind.Array)
-        {
-            throw new InvalidOperationException("The latest release does not contain downloadable assets.");
-        }
-
         List<ReleaseAsset> assets = [];
-        foreach (JsonElement asset in assetsElement.EnumerateArray())
+        if (root.TryGetProperty("assets", out JsonElement assetsElement) &&
+            assetsElement.ValueKind == JsonValueKind.Array)
         {
-            assets.Add(new ReleaseAsset(
-                GetRequiredString(asset, "name"),
-                new Uri(GetRequiredString(asset, "browser_download_url")),
-                asset.TryGetProperty("size", out JsonElement size) ? size.GetInt64() : 0,
-                asset.TryGetProperty("content_type", out JsonElement contentType)
-                    ? contentType.GetString() ?? "application/octet-stream"
-                    : "application/octet-stream"));
+            foreach (JsonElement asset in assetsElement.EnumerateArray())
+            {
+                if (asset.TryGetProperty("name", out JsonElement nameEl) &&
+                    nameEl.GetString() is string assetName &&
+                    asset.TryGetProperty("browser_download_url", out JsonElement urlEl) &&
+                    Uri.TryCreate(urlEl.GetString(), UriKind.Absolute, out Uri? downloadUrl))
+                {
+                    assets.Add(new ReleaseAsset(
+                        assetName,
+                        downloadUrl,
+                        asset.TryGetProperty("size", out JsonElement size) ? size.GetInt64() : 0,
+                        asset.TryGetProperty("content_type", out JsonElement contentType)
+                            ? contentType.GetString() ?? "application/octet-stream"
+                            : "application/octet-stream"));
+                }
+            }
         }
 
         return new GitHubRelease(tagName, pageUrl, assets);
