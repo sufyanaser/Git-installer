@@ -2,6 +2,9 @@ using System.IO.Compression;
 using System.Net;
 using System.Net.Http;
 using System.Text;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using GitHubAutoInstaller;
 using GitHubAutoInstaller.Models;
 using GitHubAutoInstaller.Services;
 using GitHubAutoInstaller.Services.Adapters;
@@ -340,7 +343,7 @@ finally
 // ============================================================================
 // 11. Archive Traversal, 7z Safety, Atomic Operations, and Rollback
 // ============================================================================
-Console.WriteLine("[11/11] Testing archive safety, 7z extraction, atomic writes, and rollback...");
+Console.WriteLine("[11/12] Testing archive safety, 7z extraction, atomic writes, and rollback...");
 string testRoot = Path.Combine(
     Path.GetTempPath(),
     "GitHubAutoInstallerSmokeTests",
@@ -363,6 +366,175 @@ finally
     {
         Directory.Delete(testRoot, recursive: true);
     }
+}
+
+// ============================================================================
+// 12. Auto-Update Service, Asset Scoring, Checksums, and Version Discovery
+// ============================================================================
+Console.WriteLine("[12/12] Testing auto-update service, asset scoring, checksum parsing, and version discovery...");
+Assert(AutoUpdateService.IsNewerVersion("v1.3.1", "1.3.0"), "1.3.1 must be newer than 1.3.0.");
+Assert(AutoUpdateService.IsNewerVersion("1.4.0", "1.3.0"), "1.4.0 must be newer than 1.3.0.");
+Assert(AutoUpdateService.IsNewerVersion("2.0.0", "1.3.0"), "2.0.0 must be newer than 1.3.0.");
+Assert(AutoUpdateService.IsNewerVersion("1.10.0", "1.9.0"), "1.10.0 must be newer than 1.9.0.");
+Assert(!AutoUpdateService.IsNewerVersion("1.3.0", "1.3.0"), "Identical version must not be newer.");
+Assert(!AutoUpdateService.IsNewerVersion("v1.2.1", "1.3.0"), "Older version must not be newer.");
+Assert(!AutoUpdateService.IsNewerVersion("1.0.0", "1.3.0"), "1.0.0 must not be newer than 1.3.0.");
+
+// Verification of architecture normalization in AutoUpdateService
+Assert(AutoUpdateService.ScoreUpdateAsset("GitHubAutoInstaller-x86_64.exe") > 0, "x86_64 must be accepted as 64-bit.");
+Assert(AutoUpdateService.ScoreUpdateAsset("GitHubAutoInstaller-Setup-x86-64.exe") > 0, "x86-64 must be accepted as 64-bit.");
+Assert(AutoUpdateService.ScoreUpdateAsset("GitHubAutoInstaller-x86.exe") < 0, "32-bit x86 must be rejected.");
+
+ReleaseAsset[] candidateAssets =
+[
+    Asset("GitHubAutoInstaller-1.3.1-linux-x64.tar.gz", 100),
+    Asset("GitHubAutoInstaller-v1.3.1-win-arm64.exe", 200),
+    Asset("GitHubAutoInstaller-v1.3.1-win-x64.exe", 300),
+    Asset("GitHubAutoInstaller-Setup-1.3.1-win-x64.exe", 400)
+];
+ReleaseAsset? selectedUpdateAsset = AutoUpdateService.FindBestUpdateAsset(candidateAssets);
+Assert(selectedUpdateAsset is not null, "A valid Windows update asset must be found.");
+Assert(selectedUpdateAsset!.Name == "GitHubAutoInstaller-Setup-1.3.1-win-x64.exe", "Setup installer must be preferred for updates.");
+
+ReleaseAsset? fallbackStandalone = AutoUpdateService.FindBestUpdateAsset([Asset("GitHubAutoInstaller-v1.3.1-win-x64.exe", 300)]);
+Assert(fallbackStandalone?.Name == "GitHubAutoInstaller-v1.3.1-win-x64.exe", "Standalone executable must be selected when setup is absent.");
+
+string sampleChecksums =
+    "# SHA256 checksums\r\n" +
+    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  GitHubAutoInstaller-Setup-1.3.1-win-x64.exe\r\n" +
+    "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945 *GitHubAutoInstaller-v1.3.1-win-x64.exe\r\n";
+Assert(
+    AutoUpdateService.ParseHashFromChecksumFile(sampleChecksums, "GitHubAutoInstaller-Setup-1.3.1-win-x64.exe") == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "Setup hash must match parsed checksum.");
+Assert(
+    AutoUpdateService.ParseHashFromChecksumFile(sampleChecksums, "GitHubAutoInstaller-v1.3.1-win-x64.exe") == "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "Standalone hash must match parsed checksum.");
+Assert(
+    AutoUpdateService.ParseHashFromChecksumFile(sampleChecksums, "nonexistent.exe") is null,
+    "Missing file must return null checksum.");
+
+string mockReleasesListJson = """
+[
+  {
+    "tag_name": "v1.3.2-preview",
+    "draft": false,
+    "html_url": "https://github.com/sufyanaser/Git-installer/releases/tag/v1.3.2-preview",
+    "assets": [
+      {
+        "name": "GitHubAutoInstaller-Setup-1.3.2-win-x64.exe",
+        "browser_download_url": "https://example.com/GitHubAutoInstaller-Setup-1.3.2-win-x64.exe",
+        "size": 5200,
+        "content_type": "application/octet-stream"
+      }
+    ]
+  },
+  {
+    "tag_name": "v1.3.1",
+    "draft": false,
+    "html_url": "https://github.com/sufyanaser/Git-installer/releases/tag/v1.3.1",
+    "assets": [
+      {
+        "name": "GitHubAutoInstaller-Setup-1.3.1-win-x64.exe",
+        "browser_download_url": "https://example.com/GitHubAutoInstaller-Setup-1.3.1-win-x64.exe",
+        "size": 5000,
+        "content_type": "application/octet-stream"
+      }
+    ]
+  }
+]
+""";
+using HttpClient mockReleasesClient = new(new StaticResponseHandler(Encoding.UTF8.GetBytes(mockReleasesListJson)));
+GitHubReleaseService mockMultiReleaseService = new(mockReleasesClient);
+FileDownloadService mockMultiDownloadService = new(mockReleasesClient);
+AutoUpdateService autoUpdateMulti = new(
+    mockReleasesClient,
+    mockMultiReleaseService,
+    mockMultiDownloadService,
+    currentVersion: "1.3.0");
+
+UpdateInfo multiUpdateInfo = await autoUpdateMulti.CheckForUpdatesAsync();
+Assert(multiUpdateInfo.IsUpdateAvailable, "Update from releases array must be detected.");
+Assert(multiUpdateInfo.LatestVersion == "1.3.2-preview", "Newest release in array must be chosen.");
+
+string mockReleaseJson = """
+{
+  "tag_name": "v1.3.1",
+  "html_url": "https://github.com/sufyanaser/Git-installer/releases/tag/v1.3.1",
+  "assets": [
+    {
+      "name": "GitHubAutoInstaller-Setup-1.3.1-win-x64.exe",
+      "browser_download_url": "https://example.com/GitHubAutoInstaller-Setup-1.3.1-win-x64.exe",
+      "size": 5000,
+      "content_type": "application/octet-stream"
+    },
+    {
+      "name": "SHA256SUMS.txt",
+      "browser_download_url": "https://example.com/SHA256SUMS.txt",
+      "size": 120,
+      "content_type": "text/plain"
+    }
+  ]
+}
+""";
+using HttpClient mockHttpClient = new(new StaticResponseHandler(Encoding.UTF8.GetBytes(mockReleaseJson)));
+GitHubReleaseService mockReleaseService = new(mockHttpClient);
+FileDownloadService mockDownloadService = new(mockHttpClient);
+AutoUpdateService autoUpdate = new(
+    mockHttpClient,
+    mockReleaseService,
+    mockDownloadService,
+    currentVersion: "1.3.0");
+
+UpdateInfo updateInfo = await autoUpdate.CheckForUpdatesAsync();
+Assert(updateInfo.IsUpdateAvailable, "Update must be detected as available.");
+Assert(updateInfo.LatestVersion == "1.3.1", "Latest version must match tag.");
+Assert(updateInfo.InstallerAsset?.Name == "GitHubAutoInstaller-Setup-1.3.1-win-x64.exe", "Installer asset must match.");
+Assert(updateInfo.ChecksumAsset?.Name == "SHA256SUMS.txt", "Checksum asset must match.");
+
+AutoUpdateService autoUpdateSameVer = new(
+    mockHttpClient,
+    mockReleaseService,
+    mockDownloadService,
+    currentVersion: "1.3.1");
+UpdateInfo sameVerInfo = await autoUpdateSameVer.CheckForUpdatesAsync();
+Assert(!sameVerInfo.IsUpdateAvailable, "Update must not be available when versions match.");
+
+// Verify WPF ComboBox Dark Template, Hit-testing, and Popups on an STA thread
+Exception? wpfError = null;
+Thread wpfTestThread = new(() =>
+{
+    try
+    {
+        MainWindow window = new();
+        window.ApplyTemplate();
+        ComboBox? comboBox = window.FindName("MethodComboBox") as ComboBox;
+        Assert(comboBox is not null, "MethodComboBox must exist in MainWindow.");
+        comboBox!.ApplyTemplate();
+
+        ToggleButton? toggle = comboBox.Template.FindName("DropDownToggle", comboBox) as ToggleButton;
+        Assert(toggle is not null, "DropDownToggle must exist in ComboBox template.");
+        Assert(toggle!.Background is not null, "DropDownToggle must bind Background from ComboBox.");
+        Assert(toggle.BorderBrush is not null, "DropDownToggle must bind BorderBrush from ComboBox.");
+        Assert(toggle.BorderThickness.Left > 0, "DropDownToggle must bind BorderThickness from ComboBox.");
+
+        Popup? popup = comboBox.Template.FindName("PART_Popup", comboBox) as Popup;
+        Assert(popup is not null, "PART_Popup must exist in ComboBox template.");
+        Assert(!popup!.StaysOpen, "PART_Popup must have StaysOpen=false so clicking outside dismisses popup.");
+
+        window.Close();
+    }
+    catch (Exception ex)
+    {
+        wpfError = ex;
+    }
+});
+wpfTestThread.SetApartmentState(ApartmentState.STA);
+wpfTestThread.Start();
+wpfTestThread.Join();
+
+if (wpfError is not null)
+{
+    throw new InvalidOperationException($"WPF template verification failed: {wpfError.Message}", wpfError);
 }
 
 Console.WriteLine("All smoke tests passed successfully.");

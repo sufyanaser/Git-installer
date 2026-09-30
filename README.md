@@ -24,6 +24,11 @@ When an official Windows release asset is not present or when alternative instal
 - **Libraries & Development Packages**: Class libraries and development modules intended for import rather than standalone execution are detected and classified as `PackageOrLibrary`, with actionable explanations provided to the user.
 - **Ambiguous or Source-Only Repositories**: Repositories lacking automated installers or recognized manifests are marked as unsupported with clear technical explanations rather than attempting speculative execution.
 
+### 4. Automatic Update Reception
+- **Self-Repository Update Checks**: Automatically monitors GitHub releases for `sufyanaser/Git-installer` on startup and periodically every 30 minutes in the background.
+- **One-Click & Silent Updates**: Prompts via a non-intrusive Update Notification Banner with one-click update download, checksum verification against `SHA256SUMS.txt`, and seamless in-place restart handoff for both Inno Setup installers and standalone executables.
+- **Manual Trigger**: Quick "Check updates" action in the sidebar with live activity logs and status feedback.
+
 ## Installation workflow
 
 ```

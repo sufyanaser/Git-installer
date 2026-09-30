@@ -34,6 +34,11 @@ public partial class MainWindow : Window
     private readonly AssetInstallerService _installerService;
     private readonly ToolVerificationService _toolVerifier;
     private readonly InstallationEngine _installationEngine;
+    private readonly AutoUpdateService _autoUpdateService;
+    private UpdateInfo? _latestUpdateInfo;
+    private System.Windows.Threading.DispatcherTimer? _updateCheckTimer;
+    private string? _downloadedUpdatePath;
+    private CancellationTokenSource? _updateDownloadCts;
 
     private WorkflowState _state = WorkflowState.Idle;
     private CancellationTokenSource? _operationCancellation;
@@ -64,6 +69,9 @@ public partial class MainWindow : Window
         _installerService = new AssetInstallerService(installRoot);
         _toolVerifier = new ToolVerificationService();
         _installationEngine = new InstallationEngine(_downloadService, _installerService, _toolVerifier);
+        _autoUpdateService = new AutoUpdateService(Http, _githubService, _downloadService);
+
+        Loaded += MainWindow_Loaded;
     }
 
     protected override void OnClosing(CancelEventArgs e)
@@ -85,6 +93,10 @@ public partial class MainWindow : Window
 
             return;
         }
+
+        _updateCheckTimer?.Stop();
+        _updateDownloadCts?.Cancel();
+        _updateDownloadCts?.Dispose();
 
         base.OnClosing(e);
     }
@@ -607,5 +619,215 @@ public partial class MainWindow : Window
             LogBox.AppendText($"[{DateTime.Now:HH:mm:ss}] {text}\r\n");
             LogBox.ScrollToEnd();
         });
+    }
+
+    private void MainWindow_Loaded(object sender, RoutedEventArgs e)
+    {
+        _ = CheckForUpdatesSilentlyAsync();
+
+        _updateCheckTimer = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromMinutes(30)
+        };
+        _updateCheckTimer.Tick += async (_, _) => await CheckForUpdatesSilentlyAsync();
+        _updateCheckTimer.Start();
+    }
+
+    private async Task CheckForUpdatesSilentlyAsync()
+    {
+        try
+        {
+            UpdateInfo update = await _autoUpdateService.CheckForUpdatesAsync();
+            if (update.IsUpdateAvailable)
+            {
+                _latestUpdateInfo = update;
+                UpdateBannerTitle.Text = $"Update v{update.LatestVersion} Available";
+                UpdateBannerSubtitle.Text = "Receiving update in background...";
+                UpdateNowButton.Content = "Receiving...";
+                UpdateNowButton.IsEnabled = false;
+                UpdateBanner.Visibility = Visibility.Visible;
+                Log($"[Auto-Updater] New version v{update.LatestVersion} discovered. Automatically receiving update in background...");
+
+                _updateDownloadCts?.Cancel();
+                _updateDownloadCts?.Dispose();
+                _updateDownloadCts = new CancellationTokenSource();
+
+                try
+                {
+                    string downloadedPath = await _autoUpdateService.DownloadAndVerifyUpdateAsync(
+                        update,
+                        new Progress<double>(p =>
+                        {
+                            Dispatcher.Invoke(() =>
+                            {
+                                UpdateBannerSubtitle.Text = $"Receiving update v{update.LatestVersion} ({p:P0})...";
+                            });
+                        }),
+                        _updateDownloadCts.Token);
+
+                    _downloadedUpdatePath = downloadedPath;
+                    UpdateBannerTitle.Text = $"Update v{update.LatestVersion} Ready";
+                    UpdateBannerSubtitle.Text = $"Version v{update.LatestVersion} received and verified. Click 'Restart to Apply'.";
+                    UpdateNowButton.Content = "Restart to Apply";
+                    UpdateNowButton.IsEnabled = true;
+                    Log($"[Auto-Updater] Update v{update.LatestVersion} received and verified successfully. Ready to apply.");
+                }
+                catch (OperationCanceledException)
+                {
+                    // Ignore cancellation on shutdown/close
+                }
+                catch (Exception ex)
+                {
+                    Log($"[Auto-Updater] Background download note: {ex.Message}. Manual update available.");
+                    UpdateBannerTitle.Text = $"Update v{update.LatestVersion} Available";
+                    UpdateBannerSubtitle.Text = $"Click 'Update Now' to download and apply v{update.LatestVersion}.";
+                    UpdateNowButton.Content = "Update Now";
+                    UpdateNowButton.IsEnabled = true;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Log($"[Auto-Updater] Background check notice: {ex.Message}");
+        }
+    }
+
+    private async void CheckUpdatesButton_Click(object sender, RoutedEventArgs e)
+    {
+        CheckUpdatesButton.IsEnabled = false;
+        CheckUpdatesButton.Content = "Checking...";
+        Log("[Auto-Updater] Checking GitHub for updates...");
+
+        try
+        {
+            UpdateInfo update = await _autoUpdateService.CheckForUpdatesAsync();
+            if (update.IsUpdateAvailable)
+            {
+                _latestUpdateInfo = update;
+                if (!string.IsNullOrEmpty(_downloadedUpdatePath) && File.Exists(_downloadedUpdatePath))
+                {
+                    UpdateBannerTitle.Text = $"Update v{update.LatestVersion} Ready";
+                    UpdateBannerSubtitle.Text = $"Version v{update.LatestVersion} received and verified. Click 'Restart to Apply'.";
+                    UpdateNowButton.Content = "Restart to Apply";
+                    UpdateNowButton.IsEnabled = true;
+                }
+                else
+                {
+                    UpdateBannerTitle.Text = $"New Version Available: v{update.LatestVersion}";
+                    UpdateBannerSubtitle.Text = $"A newer version is published on GitHub ({_autoUpdateService.Repository.FullName}). Click 'Update Now' to receive and apply it.";
+                    UpdateNowButton.Content = "Update Now";
+                    UpdateNowButton.IsEnabled = true;
+                }
+                UpdateBanner.Visibility = Visibility.Visible;
+                Log($"[Auto-Updater] Update available: v{update.LatestVersion} (current: v{update.CurrentVersion}).");
+            }
+            else
+            {
+                UpdateBanner.Visibility = Visibility.Collapsed;
+                Log($"[Auto-Updater] You are up to date! Current version: v{update.CurrentVersion}.");
+                MessageBox.Show(
+                    $"You are running the latest version of GitHub Auto Installer (v{update.CurrentVersion}).",
+                    "Check for Updates",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log($"[Auto-Updater] Failed to check for updates: {ex.Message}");
+            MessageBox.Show(
+                $"Failed to check for updates:\n{ex.Message}",
+                "Update Check Failed",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+        finally
+        {
+            CheckUpdatesButton.IsEnabled = true;
+            CheckUpdatesButton.Content = "Check updates";
+        }
+    }
+
+    private async void UpdateNowButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_latestUpdateInfo is null || !_latestUpdateInfo.IsUpdateAvailable)
+        {
+            return;
+        }
+
+        // If the update has already been downloaded and verified in the background
+        if (!string.IsNullOrEmpty(_downloadedUpdatePath) && File.Exists(_downloadedUpdatePath))
+        {
+            UpdateNowButton.IsEnabled = false;
+            DismissUpdateBannerButton.IsEnabled = false;
+            SetBusyState(isBusy: true, statusText: "RESTARTING");
+            SetStep($"Applying update v{_latestUpdateInfo.LatestVersion} and restarting...", 95);
+            Log($"[Auto-Updater] Applying update: {Path.GetFileName(_downloadedUpdatePath)}");
+
+            AutoUpdateService.ApplyUpdateAndRestart(_downloadedUpdatePath, silent: SilentCheck.IsChecked == true);
+            return;
+        }
+
+        UpdateNowButton.IsEnabled = false;
+        UpdateNowButton.Content = "Updating...";
+        DismissUpdateBannerButton.IsEnabled = false;
+        SetBusyState(isBusy: true, statusText: "UPDATING");
+
+        try
+        {
+            SetStep($"Downloading update v{_latestUpdateInfo.LatestVersion}...", 20);
+            Log($"[Auto-Updater] Downloading update v{_latestUpdateInfo.LatestVersion}...");
+
+            Progress<double> progress = new(p =>
+            {
+                int pct = (int)Math.Clamp(20 + (p * 70), 20, 90);
+                SetStep($"Downloading update v{_latestUpdateInfo.LatestVersion} ({p:P0})...", pct);
+            });
+
+            _updateDownloadCts?.Cancel();
+            _updateDownloadCts?.Dispose();
+            _updateDownloadCts = new CancellationTokenSource();
+
+            string downloadedPath = await _autoUpdateService.DownloadAndVerifyUpdateAsync(
+                _latestUpdateInfo,
+                progress,
+                _updateDownloadCts.Token);
+
+            _downloadedUpdatePath = downloadedPath;
+            SetStep("Update downloaded and verified. Launching update...", 95);
+            Log($"[Auto-Updater] Applying update: {Path.GetFileName(downloadedPath)}");
+
+            AutoUpdateService.ApplyUpdateAndRestart(downloadedPath, silent: SilentCheck.IsChecked == true);
+        }
+        catch (Exception ex)
+        {
+            SetStep($"Update failed: {ex.Message}", 0);
+            UpdateStatus("ERROR", 0);
+            Log($"[Auto-Updater] Update error: {ex.Message}");
+            MessageBox.Show(
+                $"Failed to download or apply update:\n{ex.Message}",
+                "Update Failed",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+            UpdateNowButton.IsEnabled = true;
+            UpdateNowButton.Content = "Retry Update";
+            DismissUpdateBannerButton.IsEnabled = true;
+            SetBusyState(isBusy: false, statusText: null);
+        }
+    }
+
+    private void ViewReleaseButton_Click(object sender, RoutedEventArgs e)
+    {
+        Uri url = _latestUpdateInfo?.ReleasePageUrl ?? new Uri($"https://github.com/{_autoUpdateService.Repository.FullName}/releases");
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = url.ToString(),
+            UseShellExecute = true
+        });
+    }
+
+    private void DismissUpdateBannerButton_Click(object sender, RoutedEventArgs e)
+    {
+        UpdateBanner.Visibility = Visibility.Collapsed;
     }
 }

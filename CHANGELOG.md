@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.3.0 - 2026-10-01
+
+- Fix release installation method dropdown menu styling in dark mode: introduce dedicated modern WPF ControlTemplate for `ComboBox` and `ComboBoxItem` with dark surface background (`#141C26`), subtle elevation drop-shadow, hit-tested background bindings, `StaysOpen=false` popup behavior, and high-contrast text to eliminate the white rectangle visual bug.
+- Introduce automated background update reception service (`AutoUpdateService`) that checks the self-repository (`sufyanaser/Git-installer`) for new releases/pre-releases on startup and periodically every 30 minutes, automatically downloading and verifying update payloads in the background.
+- Add prominent Update Notification Banner in MainWindow showing real-time background reception progress and instant "Restart to Apply" handoff with automatic process relaunch for both Inno Setup installers and standalone binaries.
+- Add manual "Check updates" action in the sidebar with live activity logging and status dialogs.
+- Support automated update download, integrity verification against publisher `SHA256SUMS.txt`, architecture normalization for `x86_64` assets, and seamless in-place restart handoff.
+- Harden `release.yml` GitHub Actions workflow with full `workflow_dispatch` support for automated release generation upon repository development.
+- Add unit and smoke test coverage for version comparison, asset scoring, checksum parsing, multi-release array discovery, and WPF ComboBox dark template verification.
+
 ## 1.2.1 - 2026-09-27
 
 - Support GitHub repository URLs with subpaths (e.g. `/releases`, `/releases/latest`, `/tree/...`, `/tags`).

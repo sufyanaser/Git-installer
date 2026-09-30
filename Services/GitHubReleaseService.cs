@@ -72,7 +72,58 @@ public sealed class GitHubReleaseService
             $"https://api.github.com/repos/{repository.Owner}/{repository.Name}/releases/latest",
             cancellationToken);
 
-        JsonElement root = json.RootElement;
+        return ParseRelease(json.RootElement);
+    }
+
+    public async Task<GitHubRelease?> GetLatestReleaseOrNullAsync(
+        GitHubRepository repository,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await GetLatestReleaseAsync(repository, cancellationToken);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+    }
+
+    public async Task<GitHubRelease?> GetNewestReleaseOrNullAsync(
+        GitHubRepository repository,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            using JsonDocument json = await GetJsonAsync(
+                $"https://api.github.com/repos/{repository.Owner}/{repository.Name}/releases?per_page=5",
+                cancellationToken);
+
+            if (json.RootElement.ValueKind == JsonValueKind.Array)
+            {
+                foreach (JsonElement releaseEl in json.RootElement.EnumerateArray())
+                {
+                    bool isDraft = releaseEl.TryGetProperty("draft", out JsonElement draftEl) && draftEl.GetBoolean();
+                    if (isDraft) continue;
+
+                    return ParseRelease(releaseEl);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            // Fall back to latest release endpoint
+        }
+
+        return await GetLatestReleaseOrNullAsync(repository, cancellationToken);
+    }
+
+    private static GitHubRelease ParseRelease(JsonElement root)
+    {
         string tagName = GetRequiredString(root, "tag_name");
         Uri pageUrl = new(GetRequiredString(root, "html_url"));
 
@@ -99,20 +150,6 @@ public sealed class GitHubReleaseService
         }
 
         return new GitHubRelease(tagName, pageUrl, assets);
-    }
-
-    public async Task<GitHubRelease?> GetLatestReleaseOrNullAsync(
-        GitHubRepository repository,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            return await GetLatestReleaseAsync(repository, cancellationToken);
-        }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase))
-        {
-            return null;
-        }
     }
 
     public async Task<IReadOnlyList<string>> GetRepositoryRootFilesAsync(
