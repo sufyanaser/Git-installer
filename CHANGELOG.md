@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.4.0 - 2026-10-01
+
+- Eliminate all native Win32 `MessageBox.Show` dialog popups across the application, replacing them with a unified in-app dark modal overlay (`ModalOverlay`) for alerts, completions, errors, and cancellation prompts.
+- Implement non-blocking in-app toast notification card (`ToastCard`) for status confirmations (empty clipboard alerts, log copy confirmations, up-to-date checks).
+- Remove blocking confirmation modal prior to download execution, enabling instant one-click deployment workflows upon reviewing plan details.
+- Provide synchronized, real-time progress tracking:
+  - Byte-accurate download progress displaying live percentage and formatted data size (e.g. `18.2 MB / 42.5 MB`).
+  - Active high-resolution installation duration ticker (`DispatcherTimer` + `Stopwatch`) tracking elapsed time (`(mm:ss)`) with asymptotic progress advancement during setup execution.
+  - Silky smooth progress bar transitions using WPF `DoubleAnimation` and vibrant linear gradient styling.
+- Enhance UI aesthetics:
+  - Deep dark background depth gradient and refined console card elevation drop shadows.
+  - Hover glow micro-interactions on primary action buttons.
+  - Modern vector-styled checkboxes with smooth active transitions.
+  - Pulsing status indicator dot during active inspection, installation, and auto-update operations.
+  - Sleek developer console styling for the activity log.
+
 ## 1.3.0 - 2026-10-01
 
 - Fix release installation method dropdown menu styling in dark mode: introduce dedicated modern WPF ControlTemplate for `ComboBox` and `ComboBoxItem` with dark surface background (`#141C26`), subtle elevation drop-shadow, hit-tested background bindings, `StaysOpen=false` popup behavior, and high-contrast text to eliminate the white rectangle visual bug.

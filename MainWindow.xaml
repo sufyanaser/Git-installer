@@ -7,23 +7,30 @@
         MinWidth="980"
         MinHeight="720"
         WindowStartupLocation="CenterScreen"
-        Background="#0A0E14"
         Foreground="#F4F7FB"
         FontFamily="Segoe UI Variable Text, Segoe UI"
         UseLayoutRounding="True">
 
+    <Window.Background>
+        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+            <GradientStop Color="#090D13" Offset="0"/>
+            <GradientStop Color="#0D131C" Offset="0.5"/>
+            <GradientStop Color="#090D14" Offset="1"/>
+        </LinearGradientBrush>
+    </Window.Background>
+
     <Window.Resources>
         <SolidColorBrush x:Key="AccentBrush" Color="#3B82F6"/>
-        <SolidColorBrush x:Key="AccentHoverBrush" Color="#5A96F8"/>
-        <SolidColorBrush x:Key="SurfaceBrush" Color="#121821"/>
-        <SolidColorBrush x:Key="SurfaceRaisedBrush" Color="#171F2A"/>
-        <SolidColorBrush x:Key="BorderBrush" Color="#263140"/>
+        <SolidColorBrush x:Key="AccentHoverBrush" Color="#60A5FA"/>
+        <SolidColorBrush x:Key="SurfaceBrush" Color="#101722"/>
+        <SolidColorBrush x:Key="SurfaceRaisedBrush" Color="#151E2B"/>
+        <SolidColorBrush x:Key="BorderBrush" Color="#1E2B3C"/>
         <SolidColorBrush x:Key="MutedBrush" Color="#8D9AAD"/>
-        <SolidColorBrush x:Key="StatusReadyBrush" Color="#334155"/>
-        <SolidColorBrush x:Key="StatusWorkingBrush" Color="#2563EB"/>
-        <SolidColorBrush x:Key="StatusErrorBrush" Color="#B42335"/>
-        <SolidColorBrush x:Key="StatusSuccessBrush" Color="#137A55"/>
-        <SolidColorBrush x:Key="StatusWarningBrush" Color="#A16207"/>
+        <SolidColorBrush x:Key="StatusReadyBrush" Color="#1E293B"/>
+        <SolidColorBrush x:Key="StatusWorkingBrush" Color="#1D4ED8"/>
+        <SolidColorBrush x:Key="StatusErrorBrush" Color="#991B1B"/>
+        <SolidColorBrush x:Key="StatusSuccessBrush" Color="#065F46"/>
+        <SolidColorBrush x:Key="StatusWarningBrush" Color="#854D0E"/>
 
         <Style x:Key="FocusVisual" TargetType="Control">
             <Setter Property="Template">
@@ -42,12 +49,17 @@
             <Setter Property="Background" Value="{StaticResource SurfaceBrush}"/>
             <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="16"/>
+            <Setter Property="CornerRadius" Value="14"/>
             <Setter Property="Padding" Value="18"/>
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <DropShadowEffect Color="#000000" BlurRadius="12" Direction="270" ShadowDepth="2" Opacity="0.3"/>
+                </Setter.Value>
+            </Setter>
         </Style>
 
         <Style x:Key="BaseButton" TargetType="Button">
-            <Setter Property="Height" Value="44"/>
+            <Setter Property="Height" Value="42"/>
             <Setter Property="Padding" Value="18,0"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
@@ -68,13 +80,13 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.88"/>
+                                <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.92"/>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.72"/>
+                                <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.75"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.42"/>
+                                <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.38"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -83,22 +95,128 @@
         </Style>
 
         <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource BaseButton}">
-            <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource AccentHoverBrush}"/>
+            <Setter Property="Background">
+                <Setter.Value>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                        <GradientStop Color="#2563EB" Offset="0"/>
+                        <GradientStop Color="#3B82F6" Offset="1"/>
+                    </LinearGradientBrush>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="BorderBrush" Value="#60A5FA"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="ButtonBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="10">
+                            <Border.Effect>
+                                <DropShadowEffect x:Name="ButtonGlow"
+                                                  Color="#2563EB"
+                                                  BlurRadius="8"
+                                                  ShadowDepth="1"
+                                                  Direction="270"
+                                                  Opacity="0.3"/>
+                            </Border.Effect>
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Background">
+                                    <Setter.Value>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                            <GradientStop Color="#1D4ED8" Offset="0"/>
+                                            <GradientStop Color="#60A5FA" Offset="1"/>
+                                        </LinearGradientBrush>
+                                    </Setter.Value>
+                                </Setter>
+                                <Setter TargetName="ButtonBorder" Property="Effect">
+                                    <Setter.Value>
+                                        <DropShadowEffect Color="#3B82F6" BlurRadius="14" ShadowDepth="1" Direction="270" Opacity="0.65"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.8"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.35"/>
+                                <Setter TargetName="ButtonBorder" Property="Effect" Value="{x:Null}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
         <Style x:Key="SecondaryButton" TargetType="Button" BasedOn="{StaticResource BaseButton}">
-            <Setter Property="Background" Value="{StaticResource SurfaceRaisedBrush}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+            <Setter Property="Background" Value="#17202E"/>
+            <Setter Property="BorderBrush" Value="#29394E"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="ButtonBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="10">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="#1F2C3F"/>
+                                <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="#3B82F6"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="#131B27"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.38"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
         <Style x:Key="TextActionButton" TargetType="Button" BasedOn="{StaticResource BaseButton}">
-            <Setter Property="Height" Value="32"/>
+            <Setter Property="Height" Value="30"/>
             <Setter Property="Padding" Value="12,0"/>
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
-            <Setter Property="Foreground" Value="#B8C3D1"/>
+            <Setter Property="Background" Value="#0F1722"/>
+            <Setter Property="BorderBrush" Value="#223042"/>
+            <Setter Property="Foreground" Value="#94A3B8"/>
             <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="ButtonBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="7">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="#1E293B"/>
+                                <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="#3B82F6"/>
+                                <Setter Property="Foreground" Value="#F8FAFC"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="#111827"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.38"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
         <Style TargetType="CheckBox">
@@ -106,20 +224,90 @@
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="FocusVisualStyle" Value="{StaticResource FocusVisual}"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <Grid Background="Transparent">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="22"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border x:Name="CheckBorder"
+                                    Grid.Column="0"
+                                    Width="18"
+                                    Height="18"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Center"
+                                    Background="#111827"
+                                    BorderBrush="#2D3B4E"
+                                    BorderThickness="1.5"
+                                    CornerRadius="5">
+                                <Path x:Name="CheckMark"
+                                      Data="M 3.5 8.5 L 7 12 L 13.5 4.5"
+                                      Stroke="#FFFFFF"
+                                      StrokeThickness="2"
+                                      StrokeStartLineCap="Round"
+                                      StrokeEndLineCap="Round"
+                                      StrokeLineJoin="Round"
+                                      Visibility="Collapsed"/>
+                            </Border>
+                            <ContentPresenter Grid.Column="1"
+                                              Margin="8,0,0,0"
+                                              VerticalAlignment="Center"
+                                              RecognizesAccessKey="True"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="CheckBorder" Property="Background" Value="#2563EB"/>
+                                <Setter TargetName="CheckBorder" Property="BorderBrush" Value="#60A5FA"/>
+                                <Setter TargetName="CheckMark" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="CheckBorder" Property="BorderBrush" Value="#60A5FA"/>
+                            </Trigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsMouseOver" Value="True"/>
+                                    <Condition Property="IsChecked" Value="True"/>
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="CheckBorder" Property="Background" Value="#3B82F6"/>
+                            </MultiTrigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
         <Style TargetType="ProgressBar">
-            <Setter Property="Height" Value="8"/>
+            <Setter Property="Height" Value="10"/>
             <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
-            <Setter Property="Background" Value="#202936"/>
+            <Setter Property="Background" Value="#0B111A"/>
+            <Setter Property="BorderBrush" Value="#1E293B"/>
+            <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ProgressBar">
-                        <Border Background="{TemplateBinding Background}" CornerRadius="4">
-                            <Border x:Name="PART_Indicator"
-                                    HorizontalAlignment="Left"
-                                    Background="{TemplateBinding Foreground}"
-                                    CornerRadius="4"/>
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="5">
+                            <Grid>
+                                <Border x:Name="PART_Indicator"
+                                        HorizontalAlignment="Left"
+                                        CornerRadius="4">
+                                    <Border.Background>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                            <GradientStop Color="#2563EB" Offset="0"/>
+                                            <GradientStop Color="#3B82F6" Offset="0.5"/>
+                                            <GradientStop Color="#60A5FA" Offset="1"/>
+                                        </LinearGradientBrush>
+                                    </Border.Background>
+                                </Border>
+                            </Grid>
                         </Border>
                     </ControlTemplate>
                 </Setter.Value>
@@ -302,587 +490,745 @@
         </Style>
     </Window.Resources>
 
-    <Grid Margin="20">
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="256"/>
-            <ColumnDefinition Width="16"/>
-            <ColumnDefinition Width="*"/>
-        </Grid.ColumnDefinitions>
+    <Grid>
+        <!-- Main Application Layout -->
+        <Grid Margin="20">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="260"/>
+                <ColumnDefinition Width="16"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
 
-        <!-- Left Sidebar -->
-        <Border Grid.Column="0"
-                Style="{StaticResource ConsoleCard}"
-                Padding="20">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="96"/>
-                    <RowDefinition Height="*"/>
-                    <RowDefinition Height="Auto"/>
-                </Grid.RowDefinitions>
+            <!-- Left Sidebar -->
+            <Border Grid.Column="0"
+                    Style="{StaticResource ConsoleCard}"
+                    Padding="20">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="100"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
 
-                <StackPanel Grid.Row="0">
-                    <TextBlock Text="NAS"
-                               Foreground="#7DA7F7"
-                               FontSize="11"
-                               FontWeight="Bold"/>
-                    <TextBlock Text="GitHub Installer"
-                               Margin="0,8,0,0"
-                               FontSize="23"
-                               FontWeight="SemiBold"/>
-                    <TextBlock Text="Repository-aware deployment"
-                               Margin="0,5,0,0"
-                               Foreground="{StaticResource MutedBrush}"
-                               FontSize="12"/>
-                </StackPanel>
-
-                <StackPanel Grid.Row="1" Margin="0,8,0,0">
-                    <Border Background="#192334"
-                            BorderBrush="#2A3B55"
-                            BorderThickness="1"
-                            CornerRadius="12"
-                            Padding="14"
-                            Margin="0,0,0,12">
-                        <StackPanel>
-                            <TextBlock Text="INSPECTION ENGINE"
-                                       Foreground="#7597CB"
+                    <StackPanel Grid.Row="0">
+                        <Border HorizontalAlignment="Left"
+                                Background="#1E3A8A"
+                                BorderBrush="#3B82F6"
+                                BorderThickness="1"
+                                CornerRadius="6"
+                                Padding="8,3">
+                            <TextBlock Text="NAS"
+                                       Foreground="#93C5FD"
                                        FontSize="10"
                                        FontWeight="Bold"/>
-                            <TextBlock Text="Repository-Aware"
-                                       Margin="0,7,0,0"
-                                       FontSize="15"
-                                       FontWeight="SemiBold"/>
-                        </StackPanel>
-                    </Border>
+                        </Border>
+                        <TextBlock Text="GitHub Installer"
+                                   Margin="0,8,0,0"
+                                   FontSize="22"
+                                   FontWeight="SemiBold"
+                                   Foreground="#F8FAFC"/>
+                        <TextBlock Text="Repository-aware deployment"
+                                   Margin="0,4,0,0"
+                                   Foreground="{StaticResource MutedBrush}"
+                                   FontSize="12"/>
+                    </StackPanel>
 
-                    <Border Background="{StaticResource SurfaceRaisedBrush}"
-                            BorderBrush="{StaticResource BorderBrush}"
-                            BorderThickness="1"
-                            CornerRadius="12"
-                            Padding="14"
-                            Margin="0,0,0,12">
+                    <StackPanel Grid.Row="1" Margin="0,10,0,0">
+                        <Border Background="#121D2C"
+                                BorderBrush="#1E2F46"
+                                BorderThickness="1"
+                                CornerRadius="12"
+                                Padding="14"
+                                Margin="0,0,0,12">
+                            <StackPanel>
+                                <TextBlock Text="INSPECTION ENGINE"
+                                           Foreground="#60A5FA"
+                                           FontSize="10"
+                                           FontWeight="Bold"/>
+                                <TextBlock Text="Repository-Aware"
+                                           Margin="0,6,0,0"
+                                           FontSize="15"
+                                           Foreground="#F1F5F9"
+                                           FontWeight="SemiBold"/>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Background="#121D2C"
+                                BorderBrush="#1E2F46"
+                                BorderThickness="1"
+                                CornerRadius="12"
+                                Padding="14"
+                                Margin="0,0,0,14">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="TARGET"
+                                               Foreground="{StaticResource MutedBrush}"
+                                               FontSize="10"
+                                               FontWeight="Bold"/>
+                                    <TextBlock Text="Windows x64"
+                                               Margin="0,6,0,0"
+                                               FontSize="15"
+                                               Foreground="#F1F5F9"
+                                               FontWeight="SemiBold"/>
+                                </StackPanel>
+                                <Border Grid.Column="1"
+                                        VerticalAlignment="Center"
+                                        Background="#1E2E44"
+                                        BorderBrush="#2D4262"
+                                        BorderThickness="1"
+                                        CornerRadius="7"
+                                        Padding="8,5">
+                                    <TextBlock Text="EXE/MSI/ZIP/7z/CLI"
+                                               Foreground="#93C5FD"
+                                               FontSize="9"
+                                               FontWeight="Bold"/>
+                                </Border>
+                            </Grid>
+                        </Border>
+
+                        <TextBlock Text="INSTALL OPTIONS"
+                                   Margin="2,8,0,12"
+                                   Foreground="{StaticResource MutedBrush}"
+                                   FontSize="10"
+                                   FontWeight="Bold"/>
+                        <CheckBox x:Name="SilentCheck"
+                                  Content="Request silent mode"
+                                  Margin="2,0,0,12"/>
+                        <CheckBox x:Name="ShortcutCheck"
+                                  Content="Create desktop shortcut"
+                                  IsChecked="True"
+                                  Margin="2,0,0,12"/>
+                        <CheckBox x:Name="NotifyCheck"
+                                  Content="Show completion prompt"
+                                  IsChecked="True"
+                                  Margin="2,0,0,0"/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Row="2">
+                        <Border Height="1" Background="{StaticResource BorderBrush}" Margin="0,0,0,14"/>
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <StackPanel>
-                                <TextBlock Text="TARGET"
+                                <TextBlock Text="GitHub API · Public repos"
                                            Foreground="{StaticResource MutedBrush}"
-                                           FontSize="10"
-                                           FontWeight="Bold"/>
-                                <TextBlock Text="Windows x64"
-                                           Margin="0,7,0,0"
-                                           FontSize="15"
-                                           FontWeight="SemiBold"/>
+                                           FontSize="11"/>
+                                <TextBlock x:Name="BuildVersionText"
+                                           Text="Build 1.4.0 · win-x64"
+                                           Margin="0,4,0,0"
+                                           Foreground="#657286"
+                                           FontSize="10"/>
                             </StackPanel>
-                            <Border Grid.Column="1"
-                                    VerticalAlignment="Center"
-                                    Background="#243044"
-                                    CornerRadius="8"
-                                    Padding="8,5">
-                                <TextBlock Text="EXE/MSI/ZIP/7z/CLI"
-                                           Foreground="#A9BBD5"
-                                           FontSize="9"
-                                           FontWeight="Bold"/>
-                            </Border>
+                            <Button x:Name="CheckUpdatesButton"
+                                    Grid.Column="1"
+                                    Style="{StaticResource TextActionButton}"
+                                    Height="28"
+                                    Padding="10,0"
+                                    ToolTip="Check for updates from GitHub repository"
+                                    Content="Check updates"
+                                    FontSize="11"
+                                    Click="CheckUpdatesButton_Click"/>
                         </Grid>
-                    </Border>
-
-                    <TextBlock Text="INSTALL OPTIONS"
-                               Margin="2,16,0,12"
-                               Foreground="{StaticResource MutedBrush}"
-                               FontSize="10"
-                               FontWeight="Bold"/>
-                    <CheckBox x:Name="SilentCheck"
-                              Content="Request silent mode"
-                              Margin="2,0,0,12"/>
-                    <CheckBox x:Name="ShortcutCheck"
-                              Content="Create desktop shortcut"
-                              IsChecked="True"
-                              Margin="2,0,0,12"/>
-                    <CheckBox x:Name="NotifyCheck"
-                              Content="Show completion prompt"
-                              IsChecked="True"
-                              Margin="2,0,0,0"/>
-                </StackPanel>
-
-                <StackPanel Grid.Row="2">
-                    <Border Height="1" Background="{StaticResource BorderBrush}" Margin="0,0,0,14"/>
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <StackPanel>
-                            <TextBlock Text="GitHub API · Public repos"
-                                       Foreground="{StaticResource MutedBrush}"
-                                       FontSize="11"/>
-                            <TextBlock x:Name="BuildVersionText"
-                                       Text="Build 1.3.0 · win-x64"
-                                       Margin="0,4,0,0"
-                                       Foreground="#657286"
-                                       FontSize="10"/>
-                        </StackPanel>
-                        <Button x:Name="CheckUpdatesButton"
-                                Grid.Column="1"
-                                Style="{StaticResource TextActionButton}"
-                                Height="28"
-                                Padding="8,0"
-                                ToolTip="Check for updates from GitHub repository"
-                                Content="Check updates"
-                                FontSize="10"
-                                Click="CheckUpdatesButton_Click"/>
-                    </Grid>
-                </StackPanel>
-            </Grid>
-        </Border>
-
-        <!-- Main Content Area -->
-        <Grid Grid.Column="2">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="56"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
-            </Grid.RowDefinitions>
-
-            <!-- Header Row -->
-            <Grid Grid.Row="0" Margin="4,0,4,8">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Text="Repository-Aware Installer"
-                               FontSize="22"
-                               FontWeight="SemiBold"/>
-                    <TextBlock Text="Inspect repository ecosystem, review installation plan, then confirm and deploy."
-                               Margin="0,3,0,0"
-                               Foreground="{StaticResource MutedBrush}"
-                               FontSize="12"/>
-                </StackPanel>
-                <Border x:Name="StatusBadge"
-                        Grid.Column="1"
-                        VerticalAlignment="Center"
-                        Background="{StaticResource StatusReadyBrush}"
-                        CornerRadius="12"
-                        Padding="12,6">
-                    <StackPanel Orientation="Horizontal">
-                        <Ellipse x:Name="StatusDot"
-                                 Width="7"
-                                 Height="7"
-                                 Margin="0,0,8,0"
-                                 VerticalAlignment="Center"
-                                 Fill="#CBD5E1"/>
-                        <TextBlock x:Name="StatusText"
-                                   Text="READY"
-                                   FontSize="10"
-                                   FontWeight="Bold"/>
                     </StackPanel>
-                </Border>
-            </Grid>
+                </Grid>
+            </Border>
 
-            <!-- Update Notification Banner (Visible when update detected) -->
-            <Border x:Name="UpdateBanner"
-                    Grid.Row="1"
-                    Visibility="Collapsed"
-                    Background="#13233A"
-                    BorderBrush="#3B82F6"
-                    BorderThickness="1"
-                    CornerRadius="12"
-                    Padding="14,10"
-                    Margin="0,0,0,10">
-                <Grid>
+            <!-- Main Content Area -->
+            <Grid Grid.Column="2">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="56"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <!-- Header Row -->
+                <Grid Grid.Row="0" Margin="4,0,4,8">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-
-                    <Border Background="#1E3A8A"
-                            CornerRadius="8"
-                            Width="32"
-                            Height="32"
-                            Margin="0,0,12,0"
-                            VerticalAlignment="Center">
-                        <TextBlock Text="🚀"
-                                   FontSize="15"
-                                   HorizontalAlignment="Center"
-                                   VerticalAlignment="Center"/>
-                    </Border>
-
-                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                        <TextBlock x:Name="UpdateBannerTitle"
-                                   Text="New Version Available!"
-                                   Foreground="#F8FAFC"
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="Repository-Aware Installer"
+                                   FontSize="22"
                                    FontWeight="SemiBold"
-                                   FontSize="13"/>
-                        <TextBlock x:Name="UpdateBannerSubtitle"
-                                   Text="A new version (v1.3.1) is available on GitHub."
-                                   Foreground="#93C5FD"
-                                   FontSize="11"
-                                   Margin="0,2,0,0"/>
+                                   Foreground="#F8FAFC"/>
+                        <TextBlock Text="Inspect repository ecosystem, review installation plan, then confirm and deploy."
+                                   Margin="0,3,0,0"
+                                   Foreground="{StaticResource MutedBrush}"
+                                   FontSize="12"/>
                     </StackPanel>
-
-                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                        <Button x:Name="UpdateNowButton"
-                                Style="{StaticResource PrimaryButton}"
-                                Height="32"
-                                Padding="14,0"
-                                Margin="0,0,8,0"
-                                Content="Update Now"
-                                Click="UpdateNowButton_Click"/>
-                        <Button x:Name="ViewReleaseButton"
-                                Style="{StaticResource TextActionButton}"
-                                Height="32"
-                                Content="Release Notes"
-                                Margin="0,0,8,0"
-                                Click="ViewReleaseButton_Click"/>
-                        <Button x:Name="DismissUpdateBannerButton"
-                                Style="{StaticResource TextActionButton}"
-                                Height="32"
-                                Width="32"
-                                Padding="0"
-                                Content="✕"
-                                Click="DismissUpdateBannerButton_Click"/>
-                    </StackPanel>
+                    <Border x:Name="StatusBadge"
+                            Grid.Column="1"
+                            VerticalAlignment="Center"
+                            Background="{StaticResource StatusReadyBrush}"
+                            CornerRadius="12"
+                            Padding="14,6">
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse x:Name="StatusDot"
+                                     Width="8"
+                                     Height="8"
+                                     Margin="0,0,8,0"
+                                     VerticalAlignment="Center"
+                                     Fill="#CBD5E1"/>
+                            <TextBlock x:Name="StatusText"
+                                       Text="READY"
+                                       FontSize="10"
+                                       FontWeight="Bold"/>
+                        </StackPanel>
+                    </Border>
                 </Grid>
-            </Border>
 
-            <!-- URL Input Card -->
-            <Border Grid.Row="2"
-                    Style="{StaticResource ConsoleCard}"
-                    Margin="0,0,0,10">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="20"/>
-                        <RowDefinition Height="*"/>
-                    </Grid.RowDefinitions>
-                    <TextBlock Text="REPOSITORY URL"
-                               Foreground="{StaticResource MutedBrush}"
-                               FontSize="10"
-                               FontWeight="Bold"/>
-                    <Grid Grid.Row="1" Margin="0,8,0,0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="88"/>
-                            <ColumnDefinition Width="170"/>
-                        </Grid.ColumnDefinitions>
-                        <Border Grid.Column="0"
-                                Background="#0D131B"
-                                BorderBrush="{StaticResource BorderBrush}"
-                                BorderThickness="1"
-                                CornerRadius="10">
-                            <TextBox x:Name="UrlBox"
-                                     Text="https://github.com/"
-                                     Padding="14,0"
-                                     Background="Transparent"
-                                     BorderThickness="0"
-                                     Foreground="#F1F5F9"
-                                     CaretBrush="#93B9FF"
-                                     FontSize="14"
-                                     VerticalContentAlignment="Center"
-                                     TextChanged="UrlBox_TextChanged"
-                                     KeyDown="UrlBox_KeyDown"
-                                     AutomationProperties.Name="GitHub repository URL"/>
-                        </Border>
-                        <Button x:Name="PasteButton"
-                                Grid.Column="1"
-                                Margin="10,0,0,0"
-                                Content="Paste"
-                                Style="{StaticResource SecondaryButton}"
-                                Click="PasteButton_Click"
-                                AutomationProperties.Name="Paste repository URL"/>
-                        <Button x:Name="GoButton"
-                                Grid.Column="2"
-                                Margin="10,0,0,0"
-                                Content="Inspect Repository"
-                                Style="{StaticResource PrimaryButton}"
-                                Click="GoButton_Click"
-                                AutomationProperties.Name="Inspect and execute installation plan"/>
-                    </Grid>
-                </Grid>
-            </Border>
-
-            <!-- Repository & Plan Card -->
-            <Border Grid.Row="3"
-                    Style="{StaticResource ConsoleCard}"
-                    Margin="0,0,0,10">
-                <StackPanel>
-                    <!-- Metadata Header -->
+                <!-- Update Notification Banner (Visible when update detected) -->
+                <Border x:Name="UpdateBanner"
+                        Grid.Row="1"
+                        Visibility="Collapsed"
+                        Background="#13233A"
+                        BorderBrush="#3B82F6"
+                        BorderThickness="1"
+                        CornerRadius="12"
+                        Padding="14,10"
+                        Margin="0,0,0,10">
                     <Grid>
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="70"/>
+                            <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <Border Width="56"
-                                Height="56"
-                                HorizontalAlignment="Left"
-                                VerticalAlignment="Top"
-                                Background="#1B2532"
-                                BorderBrush="{StaticResource BorderBrush}"
-                                BorderThickness="1"
-                                CornerRadius="12">
-                            <Image x:Name="RepoAvatar"
-                                   Stretch="UniformToFill"
-                                   AutomationProperties.Name="Repository owner avatar"/>
+
+                        <Border Background="#1E3A8A"
+                                CornerRadius="8"
+                                Width="32"
+                                Height="32"
+                                Margin="0,0,12,0"
+                                VerticalAlignment="Center">
+                            <TextBlock Text="🚀"
+                                       FontSize="15"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"/>
                         </Border>
-                        <StackPanel Grid.Column="1">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock x:Name="RepoTitle"
-                                           Text="Repository not inspected"
-                                           FontSize="18"
-                                           FontWeight="SemiBold"
-                                           TextTrimming="CharacterEllipsis"/>
-                                <Border x:Name="CategoryBadge"
-                                        Grid.Column="1"
-                                        Background="#1E293B"
-                                        CornerRadius="8"
-                                        Padding="10,4"
-                                        Visibility="Collapsed">
-                                    <TextBlock x:Name="CategoryText"
-                                               Text="Directly Installable"
-                                               Foreground="#94A3B8"
-                                               FontSize="11"
-                                               FontWeight="SemiBold"/>
-                                </Border>
-                            </Grid>
-                            <TextBlock x:Name="RepoDescription"
-                                       Text="Enter a public repository URL to inspect its ecosystem and installation methods."
-                                       Margin="0,4,0,0"
-                                       Foreground="{StaticResource MutedBrush}"
-                                       FontSize="12"
-                                       MaxHeight="34"
-                                       TextWrapping="Wrap"/>
-                            <WrapPanel Margin="0,10,0,0">
-                                <Border Background="#1B2532" CornerRadius="8" Padding="10,5" Margin="0,0,8,0">
-                                    <TextBlock Foreground="#BAC5D3" FontSize="11">
-                                        <Run Text="Version "/><Run x:Name="RepoVersion" Text="—" FontWeight="Bold"/>
-                                    </TextBlock>
-                                </Border>
-                                <Border Background="#1B2532" CornerRadius="8" Padding="10,5" Margin="0,0,8,0">
-                                    <TextBlock Foreground="#BAC5D3" FontSize="11">
-                                        <Run Text="Stars "/><Run x:Name="RepoStars" Text="—" FontWeight="Bold"/>
-                                    </TextBlock>
-                                </Border>
-                                <Border Background="#1B2532" CornerRadius="8" Padding="10,5">
-                                    <TextBlock Foreground="#BAC5D3" FontSize="11" MaxWidth="320" TextTrimming="CharacterEllipsis">
-                                        <Run Text="Asset "/><Run x:Name="RepoAsset" Text="—" FontWeight="Bold"/>
-                                    </TextBlock>
-                                </Border>
-                            </WrapPanel>
+
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <TextBlock x:Name="UpdateBannerTitle"
+                                       Text="New Version Available!"
+                                       Foreground="#F8FAFC"
+                                       FontWeight="SemiBold"
+                                       FontSize="13"/>
+                            <TextBlock x:Name="UpdateBannerSubtitle"
+                                       Text="A new version is available on GitHub."
+                                       Foreground="#93C5FD"
+                                       FontSize="11"
+                                       Margin="0,2,0,0"/>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button x:Name="UpdateNowButton"
+                                    Style="{StaticResource PrimaryButton}"
+                                    Height="32"
+                                    Padding="14,0"
+                                    Margin="0,0,8,0"
+                                    Content="Update Now"
+                                    Click="UpdateNowButton_Click"/>
+                            <Button x:Name="ViewReleaseButton"
+                                    Style="{StaticResource TextActionButton}"
+                                    Height="32"
+                                    Content="Release Notes"
+                                    Margin="0,0,8,0"
+                                    Click="ViewReleaseButton_Click"/>
+                            <Button x:Name="DismissUpdateBannerButton"
+                                    Style="{StaticResource TextActionButton}"
+                                    Height="32"
+                                    Width="32"
+                                    Padding="0"
+                                    Content="✕"
+                                    Click="DismissUpdateBannerButton_Click"/>
                         </StackPanel>
                     </Grid>
+                </Border>
 
-                    <!-- Plan Details Section (Visible after inspection) -->
-                    <StackPanel x:Name="PlanSection" Margin="0,14,0,0" Visibility="Collapsed">
-                        <Border Height="1" Background="{StaticResource BorderBrush}" Margin="0,0,0,12"/>
-
-                        <!-- Method Selector Row -->
-                        <Grid Margin="0,0,0,12">
+                <!-- URL Input Card -->
+                <Border Grid.Row="2"
+                        Style="{StaticResource ConsoleCard}"
+                        Margin="0,0,0,10">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="20"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <TextBlock Text="REPOSITORY URL"
+                                   Foreground="{StaticResource MutedBrush}"
+                                   FontSize="10"
+                                   FontWeight="Bold"/>
+                        <Grid Grid.Row="1" Margin="0,8,0,0">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="88"/>
+                                <ColumnDefinition Width="170"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0"
+                                    Background="#0A0F16"
+                                    BorderBrush="{StaticResource BorderBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="10">
+                                <TextBox x:Name="UrlBox"
+                                         Text="https://github.com/"
+                                         Padding="14,0"
+                                         Background="Transparent"
+                                         BorderThickness="0"
+                                         Foreground="#F1F5F9"
+                                         CaretBrush="#93B9FF"
+                                         FontSize="13.5"
+                                         VerticalContentAlignment="Center"
+                                         TextChanged="UrlBox_TextChanged"
+                                         KeyDown="UrlBox_KeyDown"
+                                         AutomationProperties.Name="GitHub repository URL"/>
+                            </Border>
+                            <Button x:Name="PasteButton"
+                                    Grid.Column="1"
+                                    Margin="10,0,0,0"
+                                    Content="Paste"
+                                    Style="{StaticResource SecondaryButton}"
+                                    Click="PasteButton_Click"
+                                    AutomationProperties.Name="Paste repository URL"/>
+                            <Button x:Name="GoButton"
+                                    Grid.Column="2"
+                                    Margin="10,0,0,0"
+                                    Content="Inspect Repository"
+                                    Style="{StaticResource PrimaryButton}"
+                                    Click="GoButton_Click"
+                                    AutomationProperties.Name="Inspect and execute installation plan"/>
+                        </Grid>
+                    </Grid>
+                </Border>
+
+                <!-- Repository & Plan Card -->
+                <Border Grid.Row="3"
+                        Style="{StaticResource ConsoleCard}"
+                        Margin="0,0,0,10">
+                    <StackPanel>
+                        <!-- Metadata Header -->
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="70"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Text="INSTALLATION METHOD:"
-                                       VerticalAlignment="Center"
-                                       Foreground="{StaticResource MutedBrush}"
-                                       FontSize="11"
-                                       FontWeight="Bold"
-                                       Margin="0,0,12,0"/>
-                            <ComboBox x:Name="MethodComboBox"
-                                      Grid.Column="1"
-                                      SelectionChanged="MethodComboBox_SelectionChanged"
-                                      AutomationProperties.Name="Available installation methods"/>
-                        </Grid>
-
-                        <!-- Plan Card Details -->
-                        <Border Background="#0D131B"
-                                BorderBrush="{StaticResource BorderBrush}"
-                                BorderThickness="1"
-                                CornerRadius="10"
-                                Padding="14">
-                            <StackPanel>
+                            <Border Width="56"
+                                    Height="56"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Top"
+                                    Background="#141C26"
+                                    BorderBrush="{StaticResource BorderBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="12">
+                                <Image x:Name="RepoAvatar"
+                                       Stretch="UniformToFill"
+                                       AutomationProperties.Name="Repository owner avatar"/>
+                            </Border>
+                            <StackPanel Grid.Column="1">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
-                                    <StackPanel>
-                                        <TextBlock x:Name="PlanTitle"
-                                                   Text="Plan Title"
-                                                   FontWeight="SemiBold"
-                                                   FontSize="14"
-                                                   Foreground="#F8FAFC"/>
-                                        <TextBlock x:Name="PlanSummary"
-                                                   Text="Summary of action"
-                                                   Foreground="{StaticResource MutedBrush}"
-                                                   FontSize="12"
-                                                   Margin="0,3,0,0"/>
-                                    </StackPanel>
-                                    <Border x:Name="PermissionsBadge"
+                                    <TextBlock x:Name="RepoTitle"
+                                               Text="Repository not inspected"
+                                               FontSize="18"
+                                               FontWeight="SemiBold"
+                                               TextTrimming="CharacterEllipsis"/>
+                                    <Border x:Name="CategoryBadge"
                                             Grid.Column="1"
-                                            VerticalAlignment="Top"
-                                            Background="#1E293B"
-                                            CornerRadius="6"
-                                            Padding="8,4">
-                                        <TextBlock x:Name="PermissionsText"
-                                                   Text="Standard User"
-                                                   Foreground="#94A3B8"
-                                                   FontSize="10"
+                                            Background="#064E3B"
+                                            BorderBrush="#059669"
+                                            BorderThickness="1"
+                                            CornerRadius="8"
+                                            Padding="10,4"
+                                            Visibility="Collapsed">
+                                        <TextBlock x:Name="CategoryText"
+                                                   Text="Directly Installable"
+                                                   Foreground="#6EE7B7"
+                                                   FontSize="11"
                                                    FontWeight="SemiBold"/>
                                     </Border>
                                 </Grid>
-
-                                <!-- Proposed Command Box -->
-                                <TextBlock Text="PROPOSED COMMANDS"
-                                           Margin="0,10,0,4"
+                                <TextBlock x:Name="RepoDescription"
+                                           Text="Enter a public repository URL to inspect its ecosystem and installation methods."
+                                           Margin="0,4,0,0"
                                            Foreground="{StaticResource MutedBrush}"
-                                           FontSize="10"
-                                           FontWeight="Bold"/>
-                                <TextBox x:Name="ProposedCommandBox"
-                                         Text="msiexec /i installer.msi"
-                                         IsReadOnly="True"
-                                         Background="#141C27"
-                                         Foreground="#86EFAC"
-                                         FontFamily="Cascadia Mono, Consolas"
-                                         FontSize="11"
-                                         Padding="10,6"
-                                         BorderBrush="{StaticResource BorderBrush}"
-                                         BorderThickness="1"
-                                         TextWrapping="Wrap"/>
-
-                                <!-- Prerequisites & Verification -->
+                                           FontSize="12"
+                                           MaxHeight="34"
+                                           TextWrapping="Wrap"/>
                                 <WrapPanel Margin="0,10,0,0">
-                                    <TextBlock Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,16,0">
-                                        <Run Text="Tools: "/><Run x:Name="PlanToolsText" Text="None required" Foreground="#E2E8F0" FontWeight="SemiBold"/>
-                                    </TextBlock>
-                                    <TextBlock Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,16,0">
-                                        <Run Text="Verification: "/><Run x:Name="PlanVerificationText" Text="Local SHA-256 audit" Foreground="#E2E8F0" FontWeight="SemiBold"/>
-                                    </TextBlock>
-                                    <TextBlock Foreground="{StaticResource MutedBrush}" FontSize="11">
-                                        <Run Text="Destination: "/><Run x:Name="PlanDestinationText" Text="Managed by installer" Foreground="#E2E8F0" FontWeight="SemiBold"/>
-                                    </TextBlock>
+                                    <Border Background="#121D2A" BorderBrush="#1F2F44" BorderThickness="1" CornerRadius="8" Padding="10,5" Margin="0,0,8,0">
+                                        <TextBlock Foreground="#BAC5D3" FontSize="11">
+                                            <Run Text="Version "/><Run x:Name="RepoVersion" Text="—" FontWeight="Bold" Foreground="#F8FAFC"/>
+                                        </TextBlock>
+                                    </Border>
+                                    <Border Background="#121D2A" BorderBrush="#1F2F44" BorderThickness="1" CornerRadius="8" Padding="10,5" Margin="0,0,8,0">
+                                        <TextBlock Foreground="#BAC5D3" FontSize="11">
+                                            <Run Text="⭐ Stars "/><Run x:Name="RepoStars" Text="—" FontWeight="Bold" Foreground="#FDE047"/>
+                                        </TextBlock>
+                                    </Border>
+                                    <Border Background="#121D2A" BorderBrush="#1F2F44" BorderThickness="1" CornerRadius="8" Padding="10,5">
+                                        <TextBlock Foreground="#BAC5D3" FontSize="11" MaxWidth="320" TextTrimming="CharacterEllipsis">
+                                            <Run Text="📦 Asset "/><Run x:Name="RepoAsset" Text="—" FontWeight="Bold" Foreground="#60A5FA"/>
+                                        </TextBlock>
+                                    </Border>
                                 </WrapPanel>
-
-                                <!-- Security Warning Banner -->
-                                <Border x:Name="WarningBanner"
-                                        Background="#2D1A04"
-                                        BorderBrush="#B45309"
-                                        BorderThickness="1"
-                                        CornerRadius="8"
-                                        Padding="10,8"
-                                        Margin="0,10,0,0"
-                                        Visibility="Collapsed">
-                                    <TextBlock x:Name="WarningText"
-                                               Foreground="#FDE68A"
-                                               FontSize="11"
-                                               TextWrapping="Wrap"/>
-                                </Border>
-
-                                <!-- Unsupported / Guarded Banner -->
-                                <Border x:Name="UnsupportedBanner"
-                                        Background="#301318"
-                                        BorderBrush="#991B1B"
-                                        BorderThickness="1"
-                                        CornerRadius="8"
-                                        Padding="10,8"
-                                        Margin="0,10,0,0"
-                                        Visibility="Collapsed">
-                                    <TextBlock x:Name="UnsupportedText"
-                                               Foreground="#FECACA"
-                                               FontSize="11"
-                                               FontWeight="SemiBold"
-                                               TextWrapping="Wrap"/>
-                                </Border>
                             </StackPanel>
-                        </Border>
+                        </Grid>
+
+                        <!-- Plan Details Section (Visible after inspection) -->
+                        <StackPanel x:Name="PlanSection" Margin="0,14,0,0" Visibility="Collapsed">
+                            <Border Height="1" Background="{StaticResource BorderBrush}" Margin="0,0,0,12"/>
+
+                            <!-- Method Selector Row -->
+                            <Grid Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="INSTALLATION METHOD:"
+                                           VerticalAlignment="Center"
+                                           Foreground="{StaticResource MutedBrush}"
+                                           FontSize="11"
+                                           FontWeight="Bold"
+                                           Margin="0,0,12,0"/>
+                                <ComboBox x:Name="MethodComboBox"
+                                          Grid.Column="1"
+                                          SelectionChanged="MethodComboBox_SelectionChanged"
+                                          AutomationProperties.Name="Available installation methods"/>
+                            </Grid>
+
+                            <!-- Plan Card Details -->
+                            <Border Background="#090E15"
+                                    BorderBrush="{StaticResource BorderBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="10"
+                                    Padding="14">
+                                <StackPanel>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel>
+                                            <TextBlock x:Name="PlanTitle"
+                                                       Text="Plan Title"
+                                                       FontWeight="SemiBold"
+                                                       FontSize="14"
+                                                       Foreground="#F8FAFC"/>
+                                            <TextBlock x:Name="PlanSummary"
+                                                       Text="Summary of action"
+                                                       Foreground="{StaticResource MutedBrush}"
+                                                       FontSize="12"
+                                                       Margin="0,3,0,0"/>
+                                        </StackPanel>
+                                        <Border x:Name="PermissionsBadge"
+                                                Grid.Column="1"
+                                                VerticalAlignment="Top"
+                                                Background="#1E293B"
+                                                CornerRadius="6"
+                                                Padding="8,4">
+                                            <TextBlock x:Name="PermissionsText"
+                                                       Text="Standard User"
+                                                       Foreground="#94A3B8"
+                                                       FontSize="10"
+                                                       FontWeight="SemiBold"/>
+                                        </Border>
+                                    </Grid>
+
+                                    <!-- Proposed Command Box -->
+                                    <TextBlock Text="PROPOSED COMMANDS"
+                                               Margin="0,10,0,4"
+                                               Foreground="{StaticResource MutedBrush}"
+                                               FontSize="10"
+                                               FontWeight="Bold"/>
+                                    <TextBox x:Name="ProposedCommandBox"
+                                             Text="msiexec /i installer.msi"
+                                             IsReadOnly="True"
+                                             Background="#0D131B"
+                                             Foreground="#4ADE80"
+                                             FontFamily="Cascadia Mono, Consolas"
+                                             FontSize="11"
+                                             Padding="10,6"
+                                             BorderBrush="{StaticResource BorderBrush}"
+                                             BorderThickness="1"
+                                             TextWrapping="Wrap"/>
+
+                                    <!-- Prerequisites & Verification -->
+                                    <WrapPanel Margin="0,10,0,0">
+                                        <TextBlock Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,16,0">
+                                            <Run Text="Tools: "/><Run x:Name="PlanToolsText" Text="None required" Foreground="#E2E8F0" FontWeight="SemiBold"/>
+                                        </TextBlock>
+                                        <TextBlock Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,0,16,0">
+                                            <Run Text="Verification: "/><Run x:Name="PlanVerificationText" Text="Local SHA-256 audit" Foreground="#E2E8F0" FontWeight="SemiBold"/>
+                                        </TextBlock>
+                                        <TextBlock Foreground="{StaticResource MutedBrush}" FontSize="11">
+                                            <Run Text="Destination: "/><Run x:Name="PlanDestinationText" Text="Managed by installer" Foreground="#E2E8F0" FontWeight="SemiBold"/>
+                                        </TextBlock>
+                                    </WrapPanel>
+
+                                    <!-- Security Warning Banner -->
+                                    <Border x:Name="WarningBanner"
+                                            Background="#2D1A04"
+                                            BorderBrush="#B45309"
+                                            BorderThickness="1"
+                                            CornerRadius="8"
+                                            Padding="10,8"
+                                            Margin="0,10,0,0"
+                                            Visibility="Collapsed">
+                                        <TextBlock x:Name="WarningText"
+                                                   Foreground="#FDE68A"
+                                                   FontSize="11"
+                                                   TextWrapping="Wrap"/>
+                                    </Border>
+
+                                    <!-- Unsupported / Guarded Banner -->
+                                    <Border x:Name="UnsupportedBanner"
+                                            Background="#301318"
+                                            BorderBrush="#991B1B"
+                                            BorderThickness="1"
+                                            CornerRadius="8"
+                                            Padding="10,8"
+                                            Margin="0,10,0,0"
+                                            Visibility="Collapsed">
+                                        <TextBlock x:Name="UnsupportedText"
+                                                   Foreground="#FECACA"
+                                                   FontSize="11"
+                                                   FontWeight="SemiBold"
+                                                   TextWrapping="Wrap"/>
+                                    </Border>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
                     </StackPanel>
+                </Border>
+
+                <!-- Progress Card -->
+                <Border Grid.Row="4"
+                        Style="{StaticResource ConsoleCard}"
+                        Padding="18,14"
+                        Margin="0,0,0,10">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="24"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <Grid Grid.Row="0">
+                            <TextBlock x:Name="StepText"
+                                       Text="Waiting for a repository URL."
+                                       FontSize="13"
+                                       FontWeight="SemiBold"
+                                       Foreground="#F1F5F9"
+                                       VerticalAlignment="Center"/>
+                            <TextBlock x:Name="PercentText"
+                                       Text="0%"
+                                       HorizontalAlignment="Right"
+                                       VerticalAlignment="Center"
+                                       Foreground="{StaticResource AccentHoverBrush}"
+                                       FontWeight="Bold"
+                                       FontSize="13"/>
+                        </Grid>
+                        <ProgressBar x:Name="ProgressBar"
+                                     Grid.Row="1"
+                                     Margin="0,9,0,0"
+                                     Minimum="0"
+                                     Maximum="100"
+                                     Value="0"
+                                     AutomationProperties.Name="Installation progress"/>
+                    </Grid>
+                </Border>
+
+                <!-- Activity Log Card -->
+                <Border Grid.Row="5"
+                        Style="{StaticResource ConsoleCard}"
+                        Padding="18,14,18,16">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="30"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <Grid Grid.Row="0">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="Activity log"
+                                           VerticalAlignment="Center"
+                                           FontSize="13"
+                                           FontWeight="SemiBold"
+                                           Foreground="#F1F5F9"/>
+                            </StackPanel>
+                            <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
+                                <Button Content="Open downloads"
+                                        Style="{StaticResource TextActionButton}"
+                                        Margin="0,0,8,0"
+                                        Click="OpenDownloadsButton_Click"/>
+                                <Button Content="Copy"
+                                        Style="{StaticResource TextActionButton}"
+                                        Margin="0,0,8,0"
+                                        Click="CopyLogButton_Click"/>
+                                <Button Content="Clear"
+                                        Style="{StaticResource TextActionButton}"
+                                        Click="ClearLogButton_Click"/>
+                            </StackPanel>
+                        </Grid>
+                        <Border Grid.Row="1"
+                                Margin="0,8,0,0"
+                                Background="#080C13"
+                                BorderBrush="{StaticResource BorderBrush}"
+                                BorderThickness="1"
+                                CornerRadius="10">
+                            <TextBox x:Name="LogBox"
+                                     Padding="12,10"
+                                     IsReadOnly="True"
+                                     Background="Transparent"
+                                     Foreground="#CBD5E1"
+                                     FontFamily="Cascadia Mono, Consolas"
+                                     FontSize="11.5"
+                                     BorderThickness="0"
+                                     VerticalScrollBarVisibility="Auto"
+                                     HorizontalScrollBarVisibility="Disabled"
+                                     TextWrapping="Wrap"
+                                     AutomationProperties.Name="Installation activity log"/>
+                        </Border>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Grid>
+
+        <!-- Custom In-App Modal Dialog Overlay -->
+        <Grid x:Name="ModalOverlay"
+              Visibility="Collapsed"
+              Background="#B2030712">
+            <Border x:Name="ModalCardBorder"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Width="460"
+                    Background="#111827"
+                    BorderBrush="#3B82F6"
+                    BorderThickness="1"
+                    CornerRadius="16"
+                    Padding="26,22">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="30" ShadowDepth="6" Direction="270" Color="#000000" Opacity="0.75"/>
+                </Border.Effect>
+                <StackPanel>
+                    <!-- Modal Icon Badge -->
+                    <Border x:Name="ModalIconBadge"
+                            Width="54"
+                            Height="54"
+                            CornerRadius="27"
+                            HorizontalAlignment="Center"
+                            Background="#1E293B"
+                            BorderThickness="1.5"
+                            BorderBrush="#3B82F6"
+                            Margin="0,4,0,16">
+                        <TextBlock x:Name="ModalIconText"
+                                   Text="✓"
+                                   FontSize="24"
+                                   FontWeight="Bold"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   Foreground="#34D399"/>
+                    </Border>
+
+                    <!-- Modal Title -->
+                    <TextBlock x:Name="ModalTitle"
+                               Text="Installation Complete"
+                               FontSize="18"
+                               FontWeight="SemiBold"
+                               HorizontalAlignment="Center"
+                               Foreground="#F8FAFC"
+                               Margin="0,0,0,10"/>
+
+                    <!-- Modal Message -->
+                    <TextBlock x:Name="ModalMessage"
+                               Text="NasArchive installed and verified successfully."
+                               FontSize="13"
+                               TextWrapping="Wrap"
+                               TextAlignment="Center"
+                               LineHeight="20"
+                               Foreground="#94A3B8"
+                               Margin="0,0,0,24"/>
+
+                    <!-- Modal Action Buttons -->
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Button x:Name="ModalSecondaryButton"
+                                Grid.Column="0"
+                                Style="{StaticResource SecondaryButton}"
+                                Content="Cancel"
+                                Height="40"
+                                Margin="0,0,10,0"
+                                Visibility="Collapsed"
+                                Click="ModalSecondaryButton_Click"/>
+                        <Button x:Name="ModalPrimaryButton"
+                                Grid.Column="1"
+                                Style="{StaticResource PrimaryButton}"
+                                Content="OK"
+                                MinWidth="130"
+                                Height="40"
+                                Click="ModalPrimaryButton_Click"/>
+                    </Grid>
                 </StackPanel>
             </Border>
-
-            <!-- Progress Card -->
-            <Border Grid.Row="4"
-                    Style="{StaticResource ConsoleCard}"
-                    Padding="18,14"
-                    Margin="0,0,0,10">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="22"/>
-                        <RowDefinition Height="*"/>
-                    </Grid.RowDefinitions>
-                    <Grid Grid.Row="0">
-                        <TextBlock x:Name="StepText"
-                                   Text="Waiting for a repository URL."
-                                   FontSize="13"
-                                   FontWeight="SemiBold"/>
-                        <TextBlock x:Name="PercentText"
-                                   Text="0%"
-                                   HorizontalAlignment="Right"
-                                   Foreground="{StaticResource MutedBrush}"
-                                   FontSize="12"/>
-                    </Grid>
-                    <ProgressBar x:Name="ProgressBar"
-                                 Grid.Row="1"
-                                 Margin="0,8,0,0"
-                                 Minimum="0"
-                                 Maximum="100"
-                                 Value="0"
-                                 AutomationProperties.Name="Installation progress"/>
-                </Grid>
-            </Border>
-
-            <!-- Activity Log Card -->
-            <Border Grid.Row="5"
-                    Style="{StaticResource ConsoleCard}"
-                    Padding="18,14,18,16">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="30"/>
-                        <RowDefinition Height="*"/>
-                    </Grid.RowDefinitions>
-                    <Grid Grid.Row="0">
-                        <TextBlock Text="Activity log"
-                                   VerticalAlignment="Center"
-                                   FontSize="13"
-                                   FontWeight="SemiBold"/>
-                        <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
-                            <Button Content="Open downloads"
-                                    Style="{StaticResource TextActionButton}"
-                                    Margin="0,0,8,0"
-                                    Click="OpenDownloadsButton_Click"/>
-                            <Button Content="Copy"
-                                    Style="{StaticResource TextActionButton}"
-                                    Margin="0,0,8,0"
-                                    Click="CopyLogButton_Click"/>
-                            <Button Content="Clear"
-                                    Style="{StaticResource TextActionButton}"
-                                    Click="ClearLogButton_Click"/>
-                        </StackPanel>
-                    </Grid>
-                    <TextBox x:Name="LogBox"
-                             Grid.Row="1"
-                             Margin="0,6,0,0"
-                             Padding="10"
-                             IsReadOnly="True"
-                             Background="#0D131B"
-                             Foreground="#C8D2DE"
-                             FontFamily="Cascadia Mono, Consolas"
-                             FontSize="11"
-                             BorderBrush="{StaticResource BorderBrush}"
-                             BorderThickness="1"
-                             VerticalScrollBarVisibility="Auto"
-                             HorizontalScrollBarVisibility="Disabled"
-                             TextWrapping="Wrap"
-                             AutomationProperties.Name="Installation activity log"/>
-                </Grid>
-            </Border>
         </Grid>
+
+        <!-- Custom In-App Toast Notification Card -->
+        <Border x:Name="ToastCard"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Top"
+                Margin="0,24,24,0"
+                MinWidth="290"
+                MaxWidth="440"
+                Background="#131D2C"
+                BorderBrush="#3B82F6"
+                BorderThickness="1"
+                CornerRadius="10"
+                Padding="14,10"
+                Visibility="Collapsed">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="18" ShadowDepth="4" Direction="270" Color="#000000" Opacity="0.55"/>
+            </Border.Effect>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="ToastIconText"
+                           Text="ℹ"
+                           FontSize="16"
+                           VerticalAlignment="Center"
+                           Margin="0,0,10,0"
+                           Foreground="#60A5FA"/>
+                <TextBlock x:Name="ToastMessage"
+                           Grid.Column="1"
+                           Text="Notification message"
+                           FontSize="12.5"
+                           Foreground="#F1F5F9"
+                           VerticalAlignment="Center"
+                           TextWrapping="Wrap"/>
+                <Button x:Name="ToastCloseButton"
+                        Grid.Column="2"
+                        Style="{StaticResource TextActionButton}"
+                        Content="✕"
+                        Width="24"
+                        Height="24"
+                        Padding="0"
+                        Margin="8,0,0,0"
+                        VerticalAlignment="Center"
+                        Click="ToastCloseButton_Click"/>
+            </Grid>
+        </Border>
     </Grid>
 </Window>

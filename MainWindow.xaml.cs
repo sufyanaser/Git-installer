@@ -5,6 +5,7 @@ using System.Net.Http;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using GitHubAutoInstaller.Models;
 using GitHubAutoInstaller.Services;
@@ -13,6 +14,22 @@ namespace GitHubAutoInstaller;
 
 public partial class MainWindow : Window
 {
+    public enum ModalKind
+    {
+        Success,
+        Info,
+        Warning,
+        Error
+    }
+
+    public enum ToastKind
+    {
+        Success,
+        Info,
+        Warning,
+        Error
+    }
+
     private enum WorkflowState
     {
         Idle,
@@ -39,6 +56,10 @@ public partial class MainWindow : Window
     private System.Windows.Threading.DispatcherTimer? _updateCheckTimer;
     private string? _downloadedUpdatePath;
     private CancellationTokenSource? _updateDownloadCts;
+
+    private TaskCompletionSource<bool>? _modalTcs;
+    private System.Windows.Threading.DispatcherTimer? _toastTimer;
+    private Storyboard? _pulseAnimation;
 
     private WorkflowState _state = WorkflowState.Idle;
     private CancellationTokenSource? _operationCancellation;
@@ -74,21 +95,23 @@ public partial class MainWindow : Window
         Loaded += MainWindow_Loaded;
     }
 
-    protected override void OnClosing(CancelEventArgs e)
+    protected override async void OnClosing(CancelEventArgs e)
     {
         if (_operationCancellation is not null && !_closeAfterCancellation)
         {
             e.Cancel = true;
-            MessageBoxResult result = MessageBox.Show(
-                "An operation is active. Cancel it and close the application?",
+            bool shouldExit = await ShowModalAsync(
                 "Operation Active",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Warning);
+                "An installation or inspection operation is currently active. Do you want to cancel the operation and close the application?",
+                ModalKind.Warning,
+                primaryButtonText: "Cancel & Close",
+                secondaryButtonText: "Keep Running");
 
-            if (result == MessageBoxResult.Yes)
+            if (shouldExit)
             {
                 _closeAfterCancellation = true;
                 _operationCancellation.Cancel();
+                Close();
             }
 
             return;
@@ -105,11 +128,7 @@ public partial class MainWindow : Window
     {
         if (!Clipboard.ContainsText())
         {
-            MessageBox.Show(
-                "Clipboard is empty.",
-                "Paste",
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
+            ShowToast("Clipboard is empty.", ToastKind.Info);
             return;
         }
 
@@ -119,14 +138,11 @@ public partial class MainWindow : Window
         {
             GitHubRepositoryParser.Parse(text);
             UrlBox.Text = text;
+            ShowToast("Repository URL pasted.", ToastKind.Success);
         }
         catch (ArgumentException exception)
         {
-            MessageBox.Show(
-                exception.Message,
-                "Invalid Clipboard",
-                MessageBoxButton.OK,
-                MessageBoxImage.Warning);
+            ShowToast(exception.Message, ToastKind.Warning);
         }
     }
 
@@ -250,11 +266,10 @@ public partial class MainWindow : Window
             SetStep("Inspection failed: " + exception.Message, 0);
             UpdateStatus("ERROR", 0);
             Log("ERROR: " + exception.Message);
-            MessageBox.Show(
-                exception.Message,
+            _ = ShowModalAsync(
                 "Inspection Failed",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
+                exception.Message,
+                ModalKind.Error);
         }
         finally
         {
@@ -268,65 +283,97 @@ public partial class MainWindow : Window
         if (_selectedOption is null) return;
         InstallationPlan plan = _selectedOption.Plan;
 
-        // Explicit User Confirmation Boundary
-        string warningDetail = plan.SecurityWarnings.Count > 0
-            ? "\n\nSecurity Warnings:\n- " + string.Join("\n- ", plan.SecurityWarnings)
-            : string.Empty;
-
-        string proposedCommandsDetail = plan.ProposedCommands.Count > 0
-            ? "\n\nProposed Command(s):\n" + string.Join("\n", plan.ProposedCommands.Select(c => c.DisplayCommand))
-            : string.Empty;
-
-        string confirmationMessage =
-            $"Authorize installation of {plan.Repository.FullName} ({plan.Version})?\n\n" +
-            $"Method: {plan.DisplayTitle}\n" +
-            $"Permissions: {plan.RequiredPermissions}\n" +
-            $"Destination: {plan.InstallationDestination}" +
-            proposedCommandsDetail +
-            warningDetail +
-            "\n\nDo you want to proceed with this installation plan?";
-
-        MessageBoxResult confirmation = MessageBox.Show(
-            confirmationMessage,
-            "Confirm Installation Plan",
-            MessageBoxButton.YesNo,
-            plan.ExecutesPublisherCode ? MessageBoxImage.Warning : MessageBoxImage.Question,
-            MessageBoxResult.No);
-
-        if (confirmation != MessageBoxResult.Yes)
-        {
-            Log("Installation cancelled by user before download or execution.");
-            SetStep("Installation cancelled by user.", 40);
-            UpdateStatus("CANCELLED", 40);
-            return;
-        }
-
+        // Note: The pre-download confirmation warning modal has been removed per user requirement.
         using CancellationTokenSource cancellation = new();
         _operationCancellation = cancellation;
         _state = WorkflowState.Installing;
         SetBusyState(isBusy: true, statusText: "INSTALLING");
         GoButton.Content = "Cancel";
 
+        System.Windows.Threading.DispatcherTimer? installDurationTimer = null;
+        Stopwatch installStopwatch = new();
+
         try
         {
-            SetStep("Starting installation workflow...", 45);
+            SetStep("Starting installation workflow...", 5);
+
+            long totalAssetBytes = plan.TargetAsset?.Size ?? 0;
 
             Progress<double> progress = new(value =>
             {
-                int percentage = 50 + (int)Math.Round(value * 25);
-                SetStep($"Downloading asset... {(int)Math.Round(value * 100)}%", percentage, writeLog: false);
+                int downloadPct = (int)Math.Round(value * 100);
+                int overallPct = (int)Math.Round(value * 50); // 0% to 50% for download phase
+
+                string sizeDetail = string.Empty;
+                if (totalAssetBytes > 0)
+                {
+                    long currentBytes = (long)(value * totalAssetBytes);
+                    sizeDetail = $" · {FormatBytes(currentBytes)} / {FormatBytes(totalAssetBytes)}";
+                }
+
+                SetStep($"Downloading {plan.TargetAsset?.Name ?? "asset"} ({downloadPct}%){sizeDetail}", overallPct, writeLog: false);
             });
 
-            SetStep("Downloading and verifying integrity...", 50);
+            // Action to wrap logging and launch live installation ticker when adapter starts executing
+            Action<string> logWrapper = msg =>
+            {
+                Log(msg);
+
+                // Detect when adapter begins installation execution
+                if (msg.Contains("Starting installation via", StringComparison.OrdinalIgnoreCase) ||
+                    msg.Contains("Installing ", StringComparison.OrdinalIgnoreCase) ||
+                    msg.Contains("Executing: ", StringComparison.OrdinalIgnoreCase))
+                {
+                    Dispatcher.Invoke(() =>
+                    {
+                        if (installDurationTimer is null)
+                        {
+                            installStopwatch.Restart();
+                            string targetName = plan.TargetAsset?.Name ?? plan.Repository.Name;
+
+                            installDurationTimer = new System.Windows.Threading.DispatcherTimer
+                            {
+                                Interval = TimeSpan.FromMilliseconds(150)
+                            };
+
+                            installDurationTimer.Tick += (_, _) =>
+                            {
+                                TimeSpan elapsed = installStopwatch.Elapsed;
+                                // Smooth asymptotic progress from 50% up to 92% based on elapsed duration
+                                double factor = 1.0 - Math.Exp(-elapsed.TotalSeconds / 20.0);
+                                int currentPercent = 50 + (int)Math.Round(factor * 42.0); // 50% to 92%
+
+                                string timeStr = $"{(int)elapsed.TotalMinutes:D2}:{elapsed.Seconds:D2}";
+                                SetStep($"Installing {targetName}... ({timeStr})", currentPercent, writeLog: false);
+                            };
+
+                            installDurationTimer.Start();
+                        }
+                    });
+                }
+            };
+
+            if (plan.TargetAsset is not null)
+            {
+                SetStep($"Connecting to GitHub for {plan.TargetAsset.Name}...", 10);
+            }
+            else
+            {
+                SetStep("Preparing installation environment...", 20);
+            }
+
             InstallationResult result = await _installationEngine.ExecutePlanAsync(
                 plan,
                 _downloadDirectory,
                 SilentCheck.IsChecked == true,
                 progress,
-                Log,
+                logWrapper,
                 cancellation.Token);
 
-            SetStep("Verifying installation result...", 85);
+            installDurationTimer?.Stop();
+            installDurationTimer = null;
+
+            SetStep("Verifying installation result...", 95);
             if (result.ExitCode is 1_641 or 3_010)
             {
                 Log("Installer completed successfully; Windows restart is required.");
@@ -349,15 +396,15 @@ public partial class MainWindow : Window
 
             if (NotifyCheck.IsChecked == true)
             {
-                MessageBox.Show(
-                    $"{plan.Repository.Name} installed and verified successfully.",
+                await ShowModalAsync(
                     "Installation Complete",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Information);
+                    $"{plan.Repository.Name} installed and verified successfully.",
+                    ModalKind.Success);
             }
         }
         catch (OperationCanceledException)
         {
+            installDurationTimer?.Stop();
             SetStep("Installation cancelled.", 0);
             UpdateStatus("CANCELLED", 0);
             _state = WorkflowState.Idle;
@@ -365,19 +412,20 @@ public partial class MainWindow : Window
         }
         catch (Exception exception)
         {
+            installDurationTimer?.Stop();
             SetStep("Installation failed: " + exception.Message, 0);
             UpdateStatus("ERROR", 0);
             Log("ERROR: " + exception.Message);
             _state = WorkflowState.Failed;
             GoButton.Content = "Inspect Repository";
-            MessageBox.Show(
-                exception.Message,
+            await ShowModalAsync(
                 "Installation Failed",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
+                exception.Message,
+                ModalKind.Error);
         }
         finally
         {
+            installDurationTimer?.Stop();
             _operationCancellation = null;
             SetBusyState(isBusy: false, statusText: null);
 
@@ -539,8 +587,8 @@ public partial class MainWindow : Window
     private void SetStep(string text, int percent, bool writeLog = true)
     {
         StepText.Text = text;
-        ProgressBar.Value = percent;
         PercentText.Text = percent + "%";
+        AnimateProgress(percent);
 
         if (writeLog)
         {
@@ -563,6 +611,7 @@ public partial class MainWindow : Window
         if (!string.IsNullOrWhiteSpace(LogBox.Text))
         {
             Clipboard.SetText(LogBox.Text);
+            ShowToast("Activity log copied to clipboard.", ToastKind.Success);
         }
     }
 
@@ -580,31 +629,46 @@ public partial class MainWindow : Window
         {
             brushKey = "StatusErrorBrush";
             dotColor = Color.FromRgb(254, 202, 202);
+            StopStatusPulsing();
         }
         else if (status.StartsWith("CANCELLED", StringComparison.OrdinalIgnoreCase))
         {
             brushKey = "StatusWarningBrush";
             dotColor = Color.FromRgb(254, 240, 138);
+            StopStatusPulsing();
         }
         else if (status.StartsWith("MANUAL", StringComparison.OrdinalIgnoreCase))
         {
             brushKey = "StatusWarningBrush";
             dotColor = Color.FromRgb(254, 240, 138);
+            StopStatusPulsing();
         }
         else if (percent >= 100 || status.StartsWith("COMPLETE", StringComparison.OrdinalIgnoreCase))
         {
             brushKey = "StatusSuccessBrush";
             dotColor = Color.FromRgb(167, 243, 208);
+            StopStatusPulsing();
+        }
+        else if (status.StartsWith("INSTALL", StringComparison.OrdinalIgnoreCase) ||
+                 status.StartsWith("INSPECT", StringComparison.OrdinalIgnoreCase) ||
+                 status.StartsWith("UPDAT", StringComparison.OrdinalIgnoreCase) ||
+                 status.StartsWith("RESTART", StringComparison.OrdinalIgnoreCase))
+        {
+            brushKey = "StatusWorkingBrush";
+            dotColor = Color.FromRgb(191, 219, 254);
+            StartStatusPulsing();
         }
         else if (percent > 0 || status.StartsWith("PLAN", StringComparison.OrdinalIgnoreCase))
         {
             brushKey = "StatusWorkingBrush";
             dotColor = Color.FromRgb(191, 219, 254);
+            StopStatusPulsing();
         }
         else
         {
             brushKey = "StatusReadyBrush";
             dotColor = Color.FromRgb(203, 213, 225);
+            StopStatusPulsing();
         }
 
         StatusText.Text = status;
@@ -725,21 +789,13 @@ public partial class MainWindow : Window
             {
                 UpdateBanner.Visibility = Visibility.Collapsed;
                 Log($"[Auto-Updater] You are up to date! Current version: v{update.CurrentVersion}.");
-                MessageBox.Show(
-                    $"You are running the latest version of GitHub Auto Installer (v{update.CurrentVersion}).",
-                    "Check for Updates",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Information);
+                ShowToast($"You are running the latest version of GitHub Auto Installer (v{update.CurrentVersion}).", ToastKind.Success);
             }
         }
         catch (Exception ex)
         {
             Log($"[Auto-Updater] Failed to check for updates: {ex.Message}");
-            MessageBox.Show(
-                $"Failed to check for updates:\n{ex.Message}",
-                "Update Check Failed",
-                MessageBoxButton.OK,
-                MessageBoxImage.Warning);
+            ShowToast($"Failed to check for updates: {ex.Message}", ToastKind.Warning);
         }
         finally
         {
@@ -804,11 +860,10 @@ public partial class MainWindow : Window
             SetStep($"Update failed: {ex.Message}", 0);
             UpdateStatus("ERROR", 0);
             Log($"[Auto-Updater] Update error: {ex.Message}");
-            MessageBox.Show(
-                $"Failed to download or apply update:\n{ex.Message}",
+            _ = ShowModalAsync(
                 "Update Failed",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
+                $"Failed to download or apply update:\n{ex.Message}",
+                ModalKind.Error);
             UpdateNowButton.IsEnabled = true;
             UpdateNowButton.Content = "Retry Update";
             DismissUpdateBannerButton.IsEnabled = true;
@@ -829,5 +884,187 @@ public partial class MainWindow : Window
     private void DismissUpdateBannerButton_Click(object sender, RoutedEventArgs e)
     {
         UpdateBanner.Visibility = Visibility.Collapsed;
+    }
+
+    private Task<bool> ShowModalAsync(
+        string title,
+        string message,
+        ModalKind kind,
+        string primaryButtonText = "OK",
+        string? secondaryButtonText = null)
+    {
+        _modalTcs = new TaskCompletionSource<bool>();
+
+        ModalTitle.Text = title;
+        ModalMessage.Text = message;
+        ModalPrimaryButton.Content = primaryButtonText;
+
+        if (!string.IsNullOrEmpty(secondaryButtonText))
+        {
+            ModalSecondaryButton.Content = secondaryButtonText;
+            ModalSecondaryButton.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            ModalSecondaryButton.Visibility = Visibility.Collapsed;
+        }
+
+        ApplyModalTheme(kind);
+        ModalOverlay.Visibility = Visibility.Visible;
+
+        return _modalTcs.Task;
+    }
+
+    private void ModalPrimaryButton_Click(object sender, RoutedEventArgs e)
+    {
+        ModalOverlay.Visibility = Visibility.Collapsed;
+        _modalTcs?.TrySetResult(true);
+    }
+
+    private void ModalSecondaryButton_Click(object sender, RoutedEventArgs e)
+    {
+        ModalOverlay.Visibility = Visibility.Collapsed;
+        _modalTcs?.TrySetResult(false);
+    }
+
+    private void ApplyModalTheme(ModalKind kind)
+    {
+        switch (kind)
+        {
+            case ModalKind.Success:
+                ModalIconText.Text = "✓";
+                ModalIconBadge.Background = new SolidColorBrush(Color.FromArgb(40, 16, 185, 129));
+                ModalIconBadge.BorderBrush = new SolidColorBrush(Color.FromRgb(16, 185, 129));
+                ModalIconText.Foreground = new SolidColorBrush(Color.FromRgb(52, 211, 153));
+                ModalCardBorder.BorderBrush = new SolidColorBrush(Color.FromRgb(16, 185, 129));
+                break;
+            case ModalKind.Error:
+                ModalIconText.Text = "✕";
+                ModalIconBadge.Background = new SolidColorBrush(Color.FromArgb(40, 239, 68, 68));
+                ModalIconBadge.BorderBrush = new SolidColorBrush(Color.FromRgb(239, 68, 68));
+                ModalIconText.Foreground = new SolidColorBrush(Color.FromRgb(248, 113, 113));
+                ModalCardBorder.BorderBrush = new SolidColorBrush(Color.FromRgb(239, 68, 68));
+                break;
+            case ModalKind.Warning:
+                ModalIconText.Text = "⚠";
+                ModalIconBadge.Background = new SolidColorBrush(Color.FromArgb(40, 245, 158, 11));
+                ModalIconBadge.BorderBrush = new SolidColorBrush(Color.FromRgb(245, 158, 11));
+                ModalIconText.Foreground = new SolidColorBrush(Color.FromRgb(251, 191, 36));
+                ModalCardBorder.BorderBrush = new SolidColorBrush(Color.FromRgb(245, 158, 11));
+                break;
+            case ModalKind.Info:
+            default:
+                ModalIconText.Text = "ℹ";
+                ModalIconBadge.Background = new SolidColorBrush(Color.FromArgb(40, 59, 130, 246));
+                ModalIconBadge.BorderBrush = new SolidColorBrush(Color.FromRgb(59, 130, 246));
+                ModalIconText.Foreground = new SolidColorBrush(Color.FromRgb(96, 165, 250));
+                ModalCardBorder.BorderBrush = new SolidColorBrush(Color.FromRgb(59, 130, 246));
+                break;
+        }
+    }
+
+    private void ShowToast(string message, ToastKind kind = ToastKind.Info)
+    {
+        ToastMessage.Text = message;
+        ApplyToastTheme(kind);
+        ToastCard.Visibility = Visibility.Visible;
+
+        _toastTimer?.Stop();
+        _toastTimer = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(3.5)
+        };
+        _toastTimer.Tick += (_, _) =>
+        {
+            ToastCard.Visibility = Visibility.Collapsed;
+            _toastTimer.Stop();
+        };
+        _toastTimer.Start();
+    }
+
+    private void ToastCloseButton_Click(object sender, RoutedEventArgs e)
+    {
+        ToastCard.Visibility = Visibility.Collapsed;
+        _toastTimer?.Stop();
+    }
+
+    private void ApplyToastTheme(ToastKind kind)
+    {
+        switch (kind)
+        {
+            case ToastKind.Success:
+                ToastIconText.Text = "✓";
+                ToastIconText.Foreground = new SolidColorBrush(Color.FromRgb(52, 211, 153));
+                ToastCard.BorderBrush = new SolidColorBrush(Color.FromRgb(16, 185, 129));
+                break;
+            case ToastKind.Warning:
+                ToastIconText.Text = "⚠";
+                ToastIconText.Foreground = new SolidColorBrush(Color.FromRgb(251, 191, 36));
+                ToastCard.BorderBrush = new SolidColorBrush(Color.FromRgb(245, 158, 11));
+                break;
+            case ToastKind.Error:
+                ToastIconText.Text = "✕";
+                ToastIconText.Foreground = new SolidColorBrush(Color.FromRgb(248, 113, 113));
+                ToastCard.BorderBrush = new SolidColorBrush(Color.FromRgb(239, 68, 68));
+                break;
+            case ToastKind.Info:
+            default:
+                ToastIconText.Text = "ℹ";
+                ToastIconText.Foreground = new SolidColorBrush(Color.FromRgb(96, 165, 250));
+                ToastCard.BorderBrush = new SolidColorBrush(Color.FromRgb(59, 130, 246));
+                break;
+        }
+    }
+
+    private void StartStatusPulsing()
+    {
+        if (_pulseAnimation is not null) return;
+
+        DoubleAnimation opacityAnim = new()
+        {
+            From = 1.0,
+            To = 0.35,
+            Duration = TimeSpan.FromMilliseconds(700),
+            AutoReverse = true,
+            RepeatBehavior = RepeatBehavior.Forever
+        };
+
+        _pulseAnimation = new Storyboard();
+        _pulseAnimation.Children.Add(opacityAnim);
+        Storyboard.SetTarget(_pulseAnimation, StatusDot);
+        Storyboard.SetTargetProperty(_pulseAnimation, new PropertyPath(UIElement.OpacityProperty));
+        _pulseAnimation.Begin();
+    }
+
+    private void StopStatusPulsing()
+    {
+        if (_pulseAnimation is not null)
+        {
+            _pulseAnimation.Stop();
+            _pulseAnimation = null;
+            StatusDot.Opacity = 1.0;
+        }
+    }
+
+    private void AnimateProgress(double targetValue)
+    {
+        DoubleAnimation anim = new()
+        {
+            To = targetValue,
+            Duration = TimeSpan.FromMilliseconds(250),
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+        };
+        ProgressBar.BeginAnimation(System.Windows.Controls.Primitives.RangeBase.ValueProperty, anim);
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        if (bytes >= 1024L * 1024 * 1024)
+            return $"{bytes / (1024d * 1024 * 1024):0.##} GB";
+        if (bytes >= 1024L * 1024)
+            return $"{bytes / (1024d * 1024):0.#} MB";
+        if (bytes >= 1024L)
+            return $"{bytes / 1024d:0.#} KB";
+        return $"{bytes} B";
     }
 }
